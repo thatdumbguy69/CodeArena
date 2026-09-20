@@ -692,7 +692,7 @@ const inMemoryStore = {
 let isConnected = false;
 
 const connectDB = async () => {
-  const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/codearena';
+  const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/CodeArena';
   try {
     mongoose.set('strictQuery', false);
     
