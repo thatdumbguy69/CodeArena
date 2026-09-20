@@ -271,7 +271,12 @@ const getAllUsers = async (req, res) => {
 // Create User (Admin Direct Provisioning)
 const createUser = async (req, res) => {
     try {
-        const { name, teamName, email, password, role } = req.body;
+        const name = req.body.name ? String(req.body.name).trim() : '';
+        const teamName = req.body.teamName ? String(req.body.teamName).trim() : '';
+        const email = req.body.email ? String(req.body.email).trim().toLowerCase() : '';
+        const password = req.body.password ? String(req.body.password).trim() : '';
+        const role = req.body.role || 'student';
+
         if (!name || !email || !password) {
             return res.status(400).json({ message: 'Name, email, and password are required.' });
         }
@@ -280,24 +285,24 @@ const createUser = async (req, res) => {
         const now = new Date();
 
         if (getIsConnected()) {
-            const existingUser = await User.findOne({ email: email.toLowerCase() });
+            const existingUser = await User.findOne({ email });
             if (existingUser) {
                 return res.status(400).json({ message: 'User with this email already exists' });
             }
 
-            const salt = await bcrypt.genSalt(8);
+            const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
 
             const user = await User.create({
                 name,
                 teamName: teamName || name,
-                email: email.toLowerCase(),
+                email,
                 password: hashedPassword,
                 role: assignedRole,
                 score: 0,
                 solvedCount: 0,
                 createdAt: now,
-                lastLogin: null
+                lastLogin: now
             });
 
             const userObj = {
