@@ -383,6 +383,7 @@ const deleteUser = async (req, res) => {
         removeLocalUserBackup(id);
 
         if (getIsConnected()) {
+            const mongoose = require('mongoose');
             const Submission = require('../models/Submission');
             const ContestSession = require('../models/ContestSession');
             const Contest = require('../models/Contest');
@@ -392,12 +393,17 @@ const deleteUser = async (req, res) => {
                 return res.status(404).json({ message: 'User not found' });
             }
 
-            // Cascade — delete all related data in parallel
+            // Cascade — delete all related submissions, sessions, and contest registrations
             await Promise.all([
-                Submission.deleteMany({ user: id }),
+                Submission.deleteMany({
+                    $or: [
+                        { user: id },
+                        { userName: deleted.name }
+                    ]
+                }),
                 ContestSession.deleteMany({ user: id }),
                 Contest.updateMany(
-                    { registeredStudents: id },
+                    {},
                     { $pull: { registeredStudents: id } }
                 )
             ]);
@@ -465,26 +471,42 @@ const deleteUser = async (req, res) => {
 const deleteAllStudents = async (req, res) => {
     try {
         bustUsersCache();
-        // Clean from local backup
-        removeAllLocalStudentsBackup();
-
         if (getIsConnected()) {
+            const mongoose = require('mongoose');
             const Submission = require('../models/Submission');
             const ContestSession = require('../models/ContestSession');
             const Contest = require('../models/Contest');
 
-            // Find all student IDs first
-            const students = await User.find({ role: { $ne: 'admin' } }, { _id: 1 });
+            // Find all non-admin students
+            const students = await User.find({ role: { $ne: 'admin' } }, { _id: 1, name: 1, email: 1 });
             const studentIds = students.map(s => s._id);
+            const studentIdStrs = students.map(s => String(s._id));
+            const studentNames = students.map(s => s.name);
+            const studentEmails = students.map(s => s.email);
 
-            // Cascade-delete all related data in parallel
+            // Cascade-delete all related student data across all collections
             const [result] = await Promise.all([
                 User.deleteMany({ role: { $ne: 'admin' } }),
-                Submission.deleteMany({ user: { $in: studentIds } }),
-                ContestSession.deleteMany({ user: { $in: studentIds } }),
+                Submission.deleteMany({
+                    $or: [
+                        { user: { $in: studentIds } },
+                        { user: { $in: studentIdStrs } },
+                        { userName: { $in: studentNames } }
+                    ]
+                }),
+                ContestSession.deleteMany({
+                    $or: [
+                        { user: { $in: studentIds } },
+                        { user: { $in: studentIdStrs } }
+                    ]
+                }),
                 Contest.updateMany(
                     {},
-                    { $pull: { registeredStudents: { $in: studentIds } } }
+                    {
+                        $pull: {
+                            registeredStudents: { $in: [...studentIds, ...studentIdStrs] }
+                        }
+                    }
                 )
             ]);
 
@@ -494,7 +516,7 @@ const deleteAllStudents = async (req, res) => {
             }
 
             return res.json({
-                message: `Removed ${result.deletedCount} student account(s) and all related data successfully.`,
+                message: `Removed ${result.deletedCount} student account(s) along with their submissions, contest sessions, and participant records.`,
                 deletedCount: result.deletedCount
             });
         } else {

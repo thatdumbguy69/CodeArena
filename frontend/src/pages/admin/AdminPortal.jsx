@@ -530,8 +530,9 @@ export const AdminPortal = ({
 
   const handleDeleteAllStudents = async () => {
     try {
-      await api.delete('/auth/users/bulk-students');
+      await api.delete('/auth/users/all-students');
       setUsersList(prev => prev.filter(u => u.role === 'admin'));
+      setSubmissions([]);
       fetchData(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Error deleting all students');

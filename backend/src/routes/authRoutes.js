@@ -10,6 +10,7 @@ router.get('/users', authMiddleware, adminOnlyMiddleware, getAllUsers);
 router.post('/users', authMiddleware, adminOnlyMiddleware, createUser);
 router.post('/users/:id/reset-password', authMiddleware, adminOnlyMiddleware, resetUserPassword);
 router.delete('/users/all-students', authMiddleware, adminOnlyMiddleware, deleteAllStudents);
+router.delete('/users/bulk-students', authMiddleware, adminOnlyMiddleware, deleteAllStudents);
 router.delete('/users/:id', authMiddleware, adminOnlyMiddleware, deleteUser);
 
 module.exports = router;
