@@ -999,8 +999,6 @@ npm run worker
 
 1. Open `http://localhost:5173`
 2. Click **Sign In** → use the default admin:
-   - Email: `tabraizsmd@gmail.com`
-   - Password: `Shamstabraiz@7931`
 3. You should land on the Admin Dashboard
 4. Go to Problems → open any problem → try running code
 
