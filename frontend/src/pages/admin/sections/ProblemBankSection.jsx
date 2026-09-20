@@ -77,7 +77,7 @@ export const ProblemBankSection = ({
             {restoring ? 'Restoring...' : 'Restore Default Problems'}
           </button>
           <button className="btn btn-primary" onClick={handleOpenCreate} style={{ fontSize: '0.84rem' }}>
-            <Plus size={16} /> Create Problem (5-Section Editor)
+            <Plus size={16} /> Create Problem (6-Section Editor)
           </button>
         </div>
       </div>
