@@ -141,6 +141,7 @@ const AppContent = () => {
     setEditingProblem(null);
     setEditingContest(null);
     sessionStorage.removeItem('codearena_user');
+    sessionStorage.removeItem('codearena_admin_suite_loaded');
     setLandingSubTab('home');
     setCurrentTab('landing');
   };
