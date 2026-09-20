@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserCog, Search, Trash2, ShieldAlert, UserCheck, Shield, AlertTriangle, UserPlus, X, Lock, Mail, User, ShieldCheck } from 'lucide-react';
+import { UserCog, Search, Trash2, ShieldAlert, UserCheck, Shield, AlertTriangle, UserPlus, X, Lock, Mail, User, ShieldCheck, KeyRound } from 'lucide-react';
 import { ConfirmActionModal } from '../../../components/admin/modals/ConfirmActionModal';
 import api from '../../../services/api';
 
@@ -14,6 +14,16 @@ export const UserManagementSection = ({
   const [search, setSearch] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false });
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+
+  // Quick Password Reset Modal State
+  const [resetModal, setResetModal] = useState({
+    isOpen: false,
+    user: null,
+    newPassword: 'student123',
+    isSubmitting: false,
+    error: '',
+    successMsg: ''
+  });
 
   // Create User Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -80,6 +90,42 @@ export const UserManagementSection = ({
       setCreateError(err.response?.data?.message || 'Failed to create user account.');
     } finally {
       setCreateSubmitting(false);
+    }
+  };
+
+  const handleOpenResetModal = (userObj) => {
+    setResetModal({
+      isOpen: true,
+      user: userObj,
+      newPassword: 'student123',
+      isSubmitting: false,
+      error: '',
+      successMsg: ''
+    });
+  };
+
+  const handleConfirmPasswordReset = async (e) => {
+    if (e) e.preventDefault();
+    if (!resetModal.user) return;
+    const targetId = resetModal.user._id || resetModal.user.id;
+    const pwd = (resetModal.newPassword || '').trim() || 'student123';
+
+    setResetModal(prev => ({ ...prev, isSubmitting: true, error: '', successMsg: '' }));
+    try {
+      const res = await api.post(`/auth/users/${targetId}/reset-password`, {
+        newPassword: pwd
+      });
+      setResetModal(prev => ({
+        ...prev,
+        isSubmitting: false,
+        successMsg: res.data?.message || `Password successfully reset to "${pwd}". The student can log in now.`
+      }));
+    } catch (err) {
+      setResetModal(prev => ({
+        ...prev,
+        isSubmitting: false,
+        error: err.response?.data?.message || 'Failed to reset password.'
+      }));
     }
   };
 
@@ -274,17 +320,37 @@ export const UserManagementSection = ({
                         {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
                       </td>
                       <td style={{ padding: '0.65rem 0.85rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        {!isSelf ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                           <button
                             className="btn btn-secondary btn-sm"
-                            onClick={() => handleDeletePrompt(u)}
-                            style={{ color: '#DC2626', padding: '0.3rem 0.55rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                            onClick={() => handleOpenResetModal(u)}
+                            title="Reset candidate password"
+                            style={{
+                              color: '#4F46E5',
+                              background: '#EEF2FF',
+                              border: '1px solid #C7D2FE',
+                              padding: '0.3rem 0.55rem',
+                              fontSize: '0.78rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              fontWeight: 600
+                            }}
                           >
-                            <Trash2 size={13} /> Remove User
+                            <KeyRound size={13} /> Reset Pass
                           </button>
-                        ) : (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Active Admin</span>
-                        )}
+                          {!isSelf ? (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleDeletePrompt(u)}
+                              style={{ color: '#DC2626', padding: '0.3rem 0.55rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                            >
+                              <Trash2 size={13} /> Remove
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', marginLeft: '0.2rem' }}>Active Admin</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -575,6 +641,192 @@ export const UserManagementSection = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {resetModal.isOpen && resetModal.user && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '14px',
+            maxWidth: '460px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid var(--border-color)',
+            textAlign: 'left'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  background: '#EEF2FF',
+                  color: '#4F46E5',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-ink)' }}>
+                    Reset User Password
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    {resetModal.user.name} ({resetModal.user.email})
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setResetModal({ isOpen: false, user: null, newPassword: 'student123', isSubmitting: false, error: '', successMsg: '' })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {resetModal.successMsg ? (
+              <div>
+                <div style={{
+                  background: '#F0FDF4',
+                  border: '1px solid #86EFAC',
+                  color: '#166534',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  fontSize: '0.88rem',
+                  lineHeight: 1.5,
+                  marginBottom: '1.25rem'
+                }}>
+                  <strong>✅ Password Updated Successfully!</strong>
+                  <div style={{ marginTop: '0.4rem', fontWeight: 600 }}>{resetModal.successMsg}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setResetModal({ isOpen: false, user: null, newPassword: 'student123', isSubmitting: false, error: '', successMsg: '' })}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '0.65rem 1rem', fontWeight: 700 }}
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleConfirmPasswordReset}>
+                {resetModal.error && (
+                  <div style={{
+                    background: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    color: '#991B1B',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '6px',
+                    fontSize: '0.82rem',
+                    marginBottom: '1rem'
+                  }}>
+                    {resetModal.error}
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.4rem', color: 'var(--text-ink)' }}>
+                    New Password for Candidate
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Lock size={15} color="var(--text-secondary)" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      value={resetModal.newPassword}
+                      onChange={e => setResetModal(prev => ({ ...prev, newPassword: e.target.value }))}
+                      placeholder="Enter new password (e.g. student123)"
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 0.75rem 0.6rem 2.25rem',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        fontSize: '0.88rem',
+                        outline: 'none',
+                        fontFamily: 'IBM Plex Mono, monospace'
+                      }}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setResetModal(prev => ({ ...prev, newPassword: 'student123' }))}
+                      style={{
+                        background: '#F1F5F9',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '4px',
+                        padding: '0.25rem 0.6rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: '#475569'
+                      }}
+                    >
+                      Default: student123
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResetModal(prev => ({ ...prev, newPassword: 'Pass@' + Math.floor(1000 + Math.random() * 9000) }))}
+                      style={{
+                        background: '#F1F5F9',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '4px',
+                        padding: '0.25rem 0.6rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: '#475569'
+                      }}
+                    >
+                      Generate Random
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setResetModal({ isOpen: false, user: null, newPassword: 'student123', isSubmitting: false, error: '', successMsg: '' })}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetModal.isSubmitting}
+                    className="btn btn-primary btn-sm"
+                    style={{
+                      background: 'var(--accent-blue, #4F46E5)',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                  >
+                    <KeyRound size={14} />
+                    {resetModal.isSubmitting ? 'Updating...' : 'Set New Password'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
