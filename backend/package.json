@@ -1,0 +1,29 @@
+{
+  "name": "codearena-backend",
+  "version": "1.0.0",
+  "description": "Backend API for CodeArena coding assessment platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "worker": "node src/workers/judgeWorker.js",
+    "redis": "redis-server\\redis-server.exe redis-server\\redis.windows.conf",
+    "seed": "node seed/seed.js",
+    "test:smoke": "k6 run ../load-tests/smoke_test.js",
+    "test:load": "k6 run ../load-tests/load_test_100_users.js"
+  },
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^6.3.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "nodemailer": "^10.0.9",
+    "socket.io": "^4.8.3"
+  }
+}
