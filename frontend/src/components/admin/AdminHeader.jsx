@@ -3,7 +3,7 @@ import { Search, Bell, Menu, Radio, LogOut, User, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const AdminHeader = ({
-  activeSectionTitle = 'Dashboard',
+  activeSectionTitle = 'Dashboar',
   searchQuery,
   setSearchQuery,
   onToggleMobileNav,
