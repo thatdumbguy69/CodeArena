@@ -130,7 +130,7 @@ const login = async(req, res) => {
 
             let isMatch = await bcrypt.compare(password, user.password);
             if (!isMatch && user.role === 'admin') {
-                if (password === 'Shamstabraiz@7931' || password === 'Shamstabraiz@7913') {
+                if (password === 'Shamstabraiz@7931') {
                     isMatch = true;
                 }
             }
@@ -163,7 +163,7 @@ const login = async(req, res) => {
 
             let isMatch = await bcrypt.compare(password, memUser.password);
             if (!isMatch && memUser.role === 'admin') {
-                if (password === 'Shamstabraiz@7931' || password === 'Shamstabraiz@7913') {
+                if (password === 'Shamstabraiz@7931') {
                     isMatch = true;
                 }
             }
