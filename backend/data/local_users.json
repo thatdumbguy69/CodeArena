@@ -4,23 +4,36 @@
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "tabraizsmd@gmail.com",
-    "password": "$2a$10$g6YFNz3BgYEGcETDvzFiieSu2M5APlXq8/TJ7WSI.QINmIyHHk27G",
+    "password": "$2a$10$wjK36odXzZLIKXHOmQBYweLs7/7/.ROydIHqYCZhQYq828egoYcRq",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T18:08:36.619Z",
-    "lastLogin": "2026-09-21T18:08:36.619Z"
+    "createdAt": "2026-09-21T18:10:16.501Z",
+    "lastLogin": "2026-09-21T18:10:16.501Z"
   },
   {
     "_id": "admin_user_1",
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "admin@platform.com",
-    "password": "$2a$10$oS8.QlCsF/8aF/voRz3fYuqxzLSYpPkTIfHGSWVdskSoSln/Cwypm",
+    "password": "$2a$10$w4mxQCNDS2kMFgeatcO1p.o1.HG.18JOIQ0r7hKAP4Zt5yrBJQ2pi",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T18:08:36.738Z",
-    "lastLogin": "2026-09-21T18:08:36.738Z"
+    "createdAt": "2026-09-21T18:10:16.607Z",
+    "lastLogin": "2026-09-21T18:10:16.607Z"
+  },
+  {
+    "id": "6ab17400924290a222c41d40",
+    "_id": "6ab17400924290a222c41d40",
+    "name": "TEST",
+    "teamName": "TEST",
+    "email": "test@gmail.com",
+    "role": "student",
+    "score": 0,
+    "solvedCount": 0,
+    "createdAt": "2026-09-21T18:14:24.466Z",
+    "lastLogin": "2026-09-21T18:14:24.466Z",
+    "password": "$2a$10$uUgL2pwiWH1zCaVyrXAbQ.L25ujl6RLZ6ZgPCGGARuLW.19PdN1tC"
   }
 ]
