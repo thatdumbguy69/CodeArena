@@ -114,7 +114,8 @@ const bustUsersCache = () => { usersListCache.data = null; usersListCache.exp = 
 // Login User
 const login = async(req, res) => {
     try {
-        const { email, password } = req.body;
+        const email = req.body.email ? String(req.body.email).trim().toLowerCase() : '';
+        const password = req.body.password ? String(req.body.password).trim() : '';
 
         if (!email || !password) {
             return res.status(400).json({ message: 'Please provide email and password' });
@@ -123,13 +124,43 @@ const login = async(req, res) => {
         const now = new Date();
 
         if (getIsConnected()) {
-            const user = await User.findOne({ email: email.toLowerCase() });
+            let user = await User.findOne({ email });
+            
+            // Auto-provision default accounts on new/empty databases
             if (!user) {
-                return res.status(400).json({ message: 'Invalid credentials - user does not exist' });
+                if ((email === 'tabraizsmd@gmail.com' || email === 'admin@platform.com') && password === 'Shamstabraiz@7931') {
+                    const hashedPassword = await bcrypt.hash('Shamstabraiz@7931', 10);
+                    user = await User.create({
+                        name: 'SMD Tabraiz (ADMIN)',
+                        teamName: 'Administration',
+                        email,
+                        password: hashedPassword,
+                        role: 'admin',
+                        score: 0,
+                        solvedCount: 0,
+                        createdAt: now,
+                        lastLogin: now
+                    });
+                } else if ((email === 'student@codearena.com' || email === 'student@platform.com') && password === 'student123') {
+                    const hashedPassword = await bcrypt.hash('student123', 10);
+                    user = await User.create({
+                        name: 'Demo Student',
+                        teamName: 'Coders Club',
+                        email,
+                        password: hashedPassword,
+                        role: 'student',
+                        score: 100,
+                        solvedCount: 1,
+                        createdAt: now,
+                        lastLogin: now
+                    });
+                } else {
+                    return res.status(400).json({ message: 'Invalid credentials - user does not exist' });
+                }
             }
 
             let isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch && user.role === 'admin') {
+            if (!isMatch && (user.role === 'admin' || user.email === 'tabraizsmd@gmail.com' || user.email === 'admin@platform.com')) {
                 if (password === 'Shamstabraiz@7931') {
                     isMatch = true;
                 }
