@@ -7,7 +7,10 @@ const getSocketServerUrl = () => {
   if (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') && !import.meta.env.VITE_API_URL.includes('127.0.0.1')) {
     return import.meta.env.VITE_API_URL.replace('/api', '');
   }
-  if (typeof window !== 'undefined' && window.location.origin) {
+  if (typeof window !== 'undefined') {
+    if (window.location.port === '5173' || window.location.port === '3000') {
+      return `${window.location.protocol}//${window.location.hostname}:5000`;
+    }
     return window.location.origin;
   }
   return 'http://127.0.0.1:5000';
