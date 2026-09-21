@@ -22,7 +22,7 @@ export const Footer = ({ setCurrentTab, landingSubTab, navigateLandingSub }) => 
       marginTop: 'auto'
     }}>
       <div className="container" style={{ maxWidth: '1140px', margin: '0 auto', padding: '0 1.5rem' }}>
-        
+
         {/* Top 4-Column Grid */}
         <div style={{
           display: 'grid',
@@ -30,7 +30,7 @@ export const Footer = ({ setCurrentTab, landingSubTab, navigateLandingSub }) => 
           gap: '2rem',
           paddingBottom: '2rem'
         }}>
-          
+
           {/* Column 1: Brand & Description */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.8rem' }}>

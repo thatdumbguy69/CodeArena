@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Play, CheckCircle, AlertCircle, Code, FileText, Settings, Database, Check, Eye, Upload, FolderPlus } from 'lucide-react';
+import { X, Plus, Trash2, Play, CheckCircle, AlertCircle, Code, FileText, Settings, Database, Check, Eye, Upload, FolderPlus, RotateCcw } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import api from '../../../services/api';
 
+const defaultStarterCodes = {
+  python: '# Read input from standard input (sys.stdin)\nimport sys\n\ndef main():\n    # Write your solution logic here\n    pass\n\nif __name__ == "__main__":\n    main()\n',
+  cpp: '#include <iostream>\n#include <vector>\n#include <string>\n\nusing namespace std;\n\nint main() {\n    // Write your solution logic here\n    \n    return 0;\n}\n',
+  c: '#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    // Write your solution logic here\n    \n    return 0;\n}\n',
+  java: 'import java.util.Scanner;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        \n        // Write your solution logic here\n        \n        scanner.close();\n    }\n}\n',
+  javascript: 'const fs = require("fs");\n\nfunction main() {\n    // Write your solution logic here\n}\n\nmain();\n'
+};
 
 export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSuccess }) => {
-  const [activeSection, setActiveSection] = useState(1); // 1 to 5
+  const [activeSection, setActiveSection] = useState(1); // 1 to 6
+  const [activeStubLang, setActiveStubLang] = useState('python');
   const testCasesEndRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -25,13 +33,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
     testCases: [
       { input: '2 7 11 15\n9', expectedOutput: '0 1', isHidden: false, explanation: 'Because 2 + 7 = 9, indices are 0 and 1.', marks: 10 }
     ],
-    starterCode: {
-      python: '# Write solution here\n',
-      cpp: '#include <iostream>\nusing namespace std;\nint main() { return 0; }\n',
-      c: '#include <stdio.h>\nint main() { return 0; }\n',
-      java: 'public class Solution { public static void main(String[] args) {} }\n',
-      javascript: '// Write solution here\n'
-    },
+    starterCode: { ...defaultStarterCodes },
     referenceSolution: {
       python: '',
       cpp: '',
@@ -172,7 +174,8 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
               { input: '', expectedOutput: '', isHidden: false, explanation: '', marks: 10 }
             ],
             referenceCode: refCode,
-            referenceLanguage: refLang
+            referenceLanguage: refLang,
+            starterCode: fullProb.starterCode ? { ...defaultStarterCodes, ...fullProb.starterCode } : { ...defaultStarterCodes }
           });
         } catch (e) {
           console.error('Error loading problem:', e);
@@ -198,7 +201,8 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
           { input: '', expectedOutput: '', isHidden: false, explanation: '', marks: 10 }
         ],
         referenceCode: '',
-        referenceLanguage: 'python'
+        referenceLanguage: 'python',
+        starterCode: { ...defaultStarterCodes }
       });
     }
     return () => { isMounted = false; };
@@ -388,8 +392,9 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             { id: 1, label: '1. Basic Info', icon: FileText },
             { id: 2, label: '2. Statement', icon: Code },
             { id: 3, label: '3. Settings', icon: Settings },
-            { id: 4, label: '4. Test Cases', icon: Database },
-            { id: 5, label: '5. Problem Preview', icon: Eye }
+            { id: 4, label: '4. Code Stubs', icon: Code },
+            { id: 5, label: '5. Test Cases', icon: Database },
+            { id: 6, label: '6. Problem Preview', icon: Eye }
           ].map(sec => {
 
             const Icon = sec.icon;
@@ -653,11 +658,189 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
                   })}
                 </div>
               </div>
+
+              {/* Custom Code Stub Action Banner */}
+              <div style={{
+                marginTop: '0.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '1rem 1.25rem',
+                background: 'rgba(46, 94, 255, 0.05)',
+                borderRadius: '8px',
+                border: '1px solid rgba(46, 94, 255, 0.2)',
+                flexWrap: 'wrap',
+                gap: '0.75rem'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Code size={16} /> Custom Code Stubs
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                    Configure pre-filled boilerplate/starter code for students in Monaco Editor.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setActiveSection(4)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}
+                >
+                  <Plus size={14} /> Add Custom Code Stub
+                </button>
+              </div>
             </div>
           )}
 
-          {/* SECTION 4: TEST CASES */}
+          {/* SECTION 4: CUSTOM CODE STUBS */}
           {activeSection === 4 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{
+                padding: '0.85rem 1.15rem',
+                background: 'rgba(46, 94, 255, 0.08)',
+                borderRadius: '8px',
+                border: '1px solid var(--accent-blue)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Code size={20} color="var(--accent-blue)" />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent-blue)' }}>Custom Code Stub Boilerplate</div>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-slate)' }}>
+                      Provide starter code pre-loaded into Monaco Editor for candidates solving this problem.
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      const defaultBoilerplate = defaultStarterCodes[activeStubLang] || '';
+                      setFormData(prev => ({
+                        ...prev,
+                        starterCode: {
+                          ...(prev.starterCode || {}),
+                          [activeStubLang]: defaultBoilerplate
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    <RotateCcw size={13} /> Reset to Default Boilerplate
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        starterCode: {
+                          ...(prev.starterCode || {}),
+                          [activeStubLang]: ''
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.78rem', color: '#DC2626' }}
+                  >
+                    Clear Stub
+                  </button>
+                </div>
+              </div>
+
+              {/* Language Selector for Code Stub */}
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                paddingBottom: '0.5rem',
+                flexWrap: 'wrap'
+              }}>
+                {formData.allowedLanguages.map(lang => {
+                  const langNames = {
+                    python: 'Python 3',
+                    cpp: 'C++17',
+                    c: 'C',
+                    java: 'Java 17',
+                    javascript: 'JavaScript'
+                  };
+                  const active = activeStubLang === lang;
+                  const hasCustomCode = Boolean(formData.starterCode?.[lang]?.trim());
+
+                  return (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setActiveStubLang(lang)}
+                      style={{
+                        padding: '0.5rem 0.9rem',
+                        borderRadius: '6px',
+                        border: active ? '1px solid var(--accent-blue)' : '1px solid var(--border-color)',
+                        background: active ? 'rgba(46, 94, 255, 0.1)' : 'var(--bg-paper)',
+                        color: active ? 'var(--accent-blue)' : 'var(--text-ink)',
+                        fontWeight: active ? 700 : 500,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      {langNames[lang] || lang}
+                      {hasCustomCode && (
+                        <span style={{
+                          width: '7px',
+                          height: '7px',
+                          borderRadius: '50%',
+                          background: '#10B981',
+                          display: 'inline-block'
+                        }} title="Custom code stub configured" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Monaco Editor for Code Stub */}
+              <div style={{
+                borderRadius: '8px',
+                overflow: 'hidden',
+                border: '1px solid var(--border-color)',
+                height: '340px'
+              }}>
+                <Editor
+                  height="100%"
+                  language={activeStubLang === 'c' || activeStubLang === 'cpp' ? 'cpp' : activeStubLang}
+                  theme="vs"
+                  value={formData.starterCode?.[activeStubLang] || ''}
+                  onChange={(value) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      starterCode: {
+                        ...(prev.starterCode || {}),
+                        [activeStubLang]: value || ''
+                      }
+                    }));
+                  }}
+                  options={{
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 13,
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    tabSize: 4,
+                    automaticLayout: true
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 5: TEST CASES */}
+          {activeSection === 5 && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>Test Case Inventory</h4>
@@ -797,8 +980,8 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             </div>
           )}
 
-          {/* SECTION 5: PROBLEM PREVIEW */}
-          {activeSection === 5 && (
+          {/* SECTION 6: PROBLEM PREVIEW */}
+          {activeSection === 6 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{
                 padding: '0.85rem 1.15rem',
@@ -891,6 +1074,37 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
                     </pre>
                   </div>
                 )}
+
+                {/* Custom Starter Code Stub Preview */}
+                <div>
+                  <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Starter Code Stub Preview</h4>
+                  <div style={{ background: '#FFFFFF', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-paper)', padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
+                      {formData.allowedLanguages.map(lang => (
+                        <button
+                          key={lang}
+                          type="button"
+                          onClick={() => setActiveStubLang(lang)}
+                          style={{
+                            padding: '0.25rem 0.6rem',
+                            borderRadius: '4px',
+                            border: 'none',
+                            background: activeStubLang === lang ? 'var(--accent-blue)' : 'transparent',
+                            color: activeStubLang === lang ? '#FFF' : 'var(--text-secondary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {lang}
+                        </button>
+                      ))}
+                    </div>
+                    <pre style={{ margin: 0, padding: '0.75rem', fontFamily: 'IBM Plex Mono, monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto' }}>
+                      {formData.starterCode?.[activeStubLang] || '// No custom code stub set'}
+                    </pre>
+                  </div>
+                </div>
 
                 {/* Public Sample Test Cases */}
                 <div>
