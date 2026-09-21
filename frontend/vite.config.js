@@ -3,13 +3,18 @@ import react from '@vitejs/plugin-react'
 
 const configureProxy = (proxy) => {
   proxy.on('error', (err) => {
-    if (err.code === 'ECONNRESET' || err.code === 'ECONNABORTED' || err.code === 'EPIPE') return;
+    if (['ECONNRESET', 'ECONNABORTED', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(err.code)) return;
     console.warn('[Vite Proxy Warning]:', err.message);
   });
   proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
     socket.on('error', (err) => {
-      if (err.code === 'ECONNRESET' || err.code === 'ECONNABORTED' || err.code === 'EPIPE') return;
+      if (['ECONNRESET', 'ECONNABORTED', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(err.code)) return;
       console.warn('[Vite WS Socket Warning]:', err.message);
+    });
+  });
+  proxy.on('open', (proxySocket) => {
+    proxySocket.on('error', (err) => {
+      if (['ECONNRESET', 'ECONNABORTED', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(err.code)) return;
     });
   });
 };
