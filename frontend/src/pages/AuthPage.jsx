@@ -19,15 +19,24 @@ export const AuthPage = ({ onAuthSuccess }) => {
     setError('');
     setSubmitting(true);
     try {
+      const cleanEmail = email ? email.trim().toLowerCase() : '';
+      const cleanPassword = password ? password.trim() : '';
+      const cleanName = name ? name.trim() : '';
+      const cleanTeam = teamName ? teamName.trim() : cleanName;
+
       let authUser = null;
       if (isLogin) {
-        authUser = await login(email, password);
+        authUser = await login(cleanEmail, cleanPassword);
       } else {
-        authUser = await register(name, teamName || name, email, password, role);
+        authUser = await register(cleanName, cleanTeam, cleanEmail, cleanPassword, role);
       }
       if (onAuthSuccess) onAuthSuccess(authUser);
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed. Check credentials.');
+      const errMsg = err.response?.data?.message 
+        || (err.message === 'Network Error' ? 'Cannot connect to backend server. Make sure the backend server is running.' : '')
+        || err.message 
+        || 'Authentication failed. Check credentials.';
+      setError(errMsg);
     } finally {
       setSubmitting(false);
     }

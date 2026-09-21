@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 const SocketContext = createContext(null);
 
 const getSocketServerUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
+  if (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') && !import.meta.env.VITE_API_URL.includes('127.0.0.1')) {
     return import.meta.env.VITE_API_URL.replace('/api', '');
   }
   if (typeof window !== 'undefined' && window.location.origin) {
