@@ -118,6 +118,37 @@ export const StudentProblemWorkspace = ({
     }, 3500);
   };
 
+  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
+  const userId = user?._id || user?.id || 'student';
+  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
+  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
+  const blurCountKey = `codearena_contest_blurs_${contestId}_${userId}`;
+
+  useEffect(() => {
+    if (!contestMode) return;
+
+    const isReload = (() => {
+      try {
+        const hasReloadFlag = !!sessionStorage.getItem(reloadFlagKey);
+        const nav = performance.getEntriesByType('navigation');
+        const isNavReload = (nav && nav.length > 0 && nav[0].type === 'reload') || (performance.navigation && performance.navigation.type === 1);
+        const wasActive = !!sessionStorage.getItem(activeSessionKey);
+        return hasReloadFlag || (isNavReload && wasActive);
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    sessionStorage.setItem(activeSessionKey, 'true');
+
+    if (isReload && !contestCompletedRef.current) {
+      sessionStorage.removeItem(reloadFlagKey);
+      // Automatically prompt fullscreen and trigger violation
+      setFirstEntryModalOpen(false);
+      handleFocusLoss('Page refreshed during contest');
+    }
+  }, [contestMode]);
+
   useEffect(() => {
     if (!contestMode && (!allProblems || allProblems.length === 0)) {
       api.get('/questions').then(res => {
@@ -405,22 +436,126 @@ export const StudentProblemWorkspace = ({
   useEffect(() => {
     if (!contestMode || contestCompleted || contestStartsIn > 0) return;
 
+    // 1. Right Click Prevention in Contest
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    // 2. Copy, Cut & Paste Prevention (blocks clipboard access & Windows+V)
+    const handleCopy = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Copying is disabled in secure contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    const handleCut = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Cutting is disabled in secure contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    const handlePaste = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Pasting & Clipboard access is strictly disabled in contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    // 3. Prevent Refresh & Clipboard Keyboard Shortcuts (F5, Ctrl+R, Ctrl+C, Ctrl+V, Ctrl+X, Shift+Insert, Ctrl+Insert)
+    const handleKeyDown = (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const key = (e.key || '').toLowerCase();
+
+      // Refresh blocking
+      if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest! Refreshing will record a proctoring violation.');
+        setTimeout(() => setSecurityAlert(null), 4000);
+        return false;
+      }
+
+      // Clipboard blocking
+      if (
+        (isCtrlOrCmd && ['c', 'v', 'x', 'insert'].includes(key)) ||
+        (e.shiftKey && key === 'insert')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+        return false;
+      }
+    };
+
+    // 4. Beforeunload Warning & Reload Flag
+    const handleBeforeUnload = (e) => {
+      if (!contestCompletedRef.current) {
+        sessionStorage.setItem(reloadFlagKey, JSON.stringify({
+          reloadedAt: Date.now(),
+          contestId,
+          blurCount: blurCountRef.current
+        }));
+        e.preventDefault();
+        e.returnValue = 'Refreshing the contest page will record a proctoring violation. Are you sure you want to refresh?';
+        return e.returnValue;
+      }
+    };
+
+    // 5. Blur & Visibility Change Focus Loss
     const onBlur = () => {
       if (isProctoringArmedRef.current) {
-        handleFocusLoss('Window focus lost / tab switch');
+        if (document.hidden) {
+          handleFocusLoss('Tab switch / window hidden');
+        } else {
+          handleFocusLoss('Window focus lost / tab switch');
+        }
       }
     };
 
     const onVisibilityChange = () => {
       if (document.hidden && isProctoringArmedRef.current) {
-        handleFocusLoss('Tab switch / window hidden');
+        handleFocusLoss('Tab switch / window minimized');
       }
     };
 
+    window.addEventListener('contextmenu', handleContextMenu, true);
+    document.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('copy', handleCopy, true);
+    document.addEventListener('copy', handleCopy, true);
+    window.addEventListener('cut', handleCut, true);
+    document.addEventListener('cut', handleCut, true);
+    window.addEventListener('paste', handlePaste, true);
+    document.addEventListener('paste', handlePaste, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      window.removeEventListener('contextmenu', handleContextMenu, true);
+      document.removeEventListener('contextmenu', handleContextMenu, true);
+      window.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('copy', handleCopy, true);
+      window.removeEventListener('cut', handleCut, true);
+      document.removeEventListener('cut', handleCut, true);
+      window.removeEventListener('paste', handlePaste, true);
+      document.removeEventListener('paste', handlePaste, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
@@ -1125,6 +1260,43 @@ export const StudentProblemWorkspace = ({
     );
   }
 
+  const handleEditorDidMount = (editor, monaco) => {
+    if (!contestMode) return;
+
+    editor.onKeyDown((e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (
+        (isCtrlOrCmd && (e.keyCode === monaco.KeyCode.KeyV || e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyX || e.keyCode === monaco.KeyCode.Insert)) ||
+        (e.shiftKey && e.keyCode === monaco.KeyCode.Insert)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+    });
+
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      const blockEvt = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.clipboardData) e.clipboardData.clearData();
+      };
+      domNode.addEventListener('paste', blockEvt, true);
+      domNode.addEventListener('copy', blockEvt, true);
+      domNode.addEventListener('cut', blockEvt, true);
+      domNode.addEventListener('contextmenu', blockEvt, true);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)' }}>
       {/* Workspace Top Header Bar */}
@@ -1589,6 +1761,7 @@ export const StudentProblemWorkspace = ({
               theme="vs"
               value={codeMap[language] || defaultBoilerplates[language]}
               onChange={handleCodeChange}
+              onMount={handleEditorDidMount}
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,
@@ -1596,7 +1769,11 @@ export const StudentProblemWorkspace = ({
                 scrollBeyondLastLine: false,
                 lineNumbers: 'on',
                 autoIndent: 'full',
-                bracketPairColorization: { enabled: true }
+                bracketPairColorization: { enabled: true },
+                contextmenu: !contestMode,
+                dragAndDrop: !contestMode,
+                selectionClipboard: !contestMode,
+                links: !contestMode
               }}
             />
           </div>

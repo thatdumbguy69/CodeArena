@@ -38,11 +38,19 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  lastLogin: {
+    type: Date,
+    default: Date.now
   }
+}, {
+  collection: 'user data',
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 userSchema.index({ role: 1, createdAt: -1 });
 userSchema.index({ role: 1, score: -1, solvedCount: -1 });
 userSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema, 'user data');

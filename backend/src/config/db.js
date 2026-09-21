@@ -691,8 +691,34 @@ const inMemoryStore = {
 
 let isConnected = false;
 
+const isPlaceholderMongoURI = (uri) => {
+  if (!uri || typeof uri !== 'string' || !uri.trim()) return true;
+  const lower = uri.toLowerCase();
+  return (
+    lower.includes('<username>') ||
+    lower.includes('<password>') ||
+    lower.includes('yourmongodb') ||
+    lower.includes('your-mongodb') ||
+    lower.includes('your_mongodb') ||
+    lower.includes('placeholder')
+  );
+};
+
 const connectDB = async () => {
-  const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/codearena';
+  const mongoURI = (process.env.MONGODB_URI || '').trim();
+
+  if (isPlaceholderMongoURI(mongoURI)) {
+    console.error('\n================================================================');
+    console.error('❌ FATAL ERROR: MongoDB Atlas connection string (MONGODB_URI) is not configured!');
+    console.error('----------------------------------------------------------------');
+    console.error('👉 Please create or update "backend/.env" with your own MongoDB Atlas URI:');
+    console.error('   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/CodeArena?retryWrites=true&w=majority');
+    console.error('----------------------------------------------------------------');
+    console.error('The server cannot start without a valid MongoDB connection string.');
+    console.error('================================================================\n');
+    process.exit(1);
+  }
+
   try {
     mongoose.set('strictQuery', false);
     
@@ -721,9 +747,11 @@ const connectDB = async () => {
     // Auto-seed database if empty
     await seedDatabase();
   } catch (err) {
-    console.warn('MongoDB connection failed. Operating with hybrid memory store fallback:', err.message);
-    isConnected = false;
-    await seedDatabase();
+    console.error('\n================================================================');
+    console.error('❌ FATAL ERROR: MongoDB connection failed:', err.message);
+    console.error('👉 Please check your MongoDB URI, network whitelist (0.0.0.0/0), and credentials in backend/.env.');
+    console.error('================================================================\n');
+    process.exit(1);
   }
 };
 

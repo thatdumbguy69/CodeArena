@@ -10,6 +10,13 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const { user } = useAuth();
   const handleExit = onFinishContest || onBack || (() => window.location.reload());
 
+  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
+  const userId = user?._id || user?.id || 'student';
+  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
+  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
+  const blurCountKey = `codearena_contest_blurs_${contestId}_${userId}`;
+  const savedCodesKey = `codearena_contest_codes_${contestId}_${userId}`;
+
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [timeLeft, setTimeLeft] = useState(contest?.remainingSecs ?? ((contest?.duration || 60) * 60));
@@ -17,7 +24,13 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
 
   const [language, setLanguage] = useState('python');
-  const [codes, setCodes] = useState({});
+  const [codes, setCodes] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(`codearena_contest_codes_${contest?._id || contest?.slug || contest?.id || 'default_contest'}_${user?._id || user?.id || 'student'}`);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
   const [executing, setExecuting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [disqualifiedReason, setDisqualifiedReason] = useState(null);
@@ -32,12 +45,26 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const [verdicts, setVerdicts] = useState({});
   const [isConsoleExpanded, setIsConsoleExpanded] = useState(false);
 
-  // Anti-cheat state
-  const [blurCount, setBlurCount] = useState(0);
+  // Anti-cheat state with session persistence
+  const [blurCount, setBlurCount] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(`codearena_contest_blurs_${contest?._id || contest?.slug || contest?.id || 'default_contest'}_${user?._id || user?.id || 'student'}`);
+      if (saved) return parseInt(saved, 10) || 0;
+    } catch (e) {}
+    return 0;
+  });
   const [securityAlert, setSecurityAlert] = useState(null);
 
   // 15-Second Contest Onboarding Instructions Overlay
-  const [showInstructionsModal, setShowInstructionsModal] = useState(true);
+  const [showInstructionsModal, setShowInstructionsModal] = useState(() => {
+    // If refreshing during an already active contest session, don't show instructions again
+    try {
+      const wasActive = sessionStorage.getItem(`codearena_contest_active_${contest?._id || contest?.slug || contest?.id || 'default_contest'}_${user?._id || user?.id || 'student'}`);
+      return !wasActive;
+    } catch (e) {
+      return true;
+    }
+  });
   const [instructionsCountdown, setInstructionsCountdown] = useState(15);
 
   // Non-blinking Finish Contest Tooltip Hover State
@@ -52,6 +79,8 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const verdictsRef = useRef(verdicts);
   const languageRef = useRef(language);
   const blurCountRef = useRef(blurCount);
+  const lastViolationTimeRef = useRef(0);
+  const editorRef = useRef(null);
 
   useEffect(() => { codesRef.current = codes; }, [codes]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
@@ -276,6 +305,110 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     };
   }, [socket, contest?._id, contest?.slug, user?._id]);
 
+  const enterFullscreen = () => {
+    try {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
+      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      setWarningModalOpen(false);
+    } catch (e) {
+      console.warn('Enter fullscreen error:', e);
+    }
+  };
+
+  const setBlurCountWithPersistence = (nextCount) => {
+    setBlurCount(nextCount);
+    blurCountRef.current = nextCount;
+    try {
+      sessionStorage.setItem(blurCountKey, String(nextCount));
+    } catch (e) {}
+  };
+
+  const triggerViolation = (reason = 'Tab Switch / Focus Lost', forceCount = null) => {
+    if (contestFinished || isAutoSubmitting) return;
+    if (contest && contest.antiCheatEnabled === false) return;
+
+    const now = Date.now();
+    if (now - lastViolationTimeRef.current < 2000) {
+      return;
+    }
+    lastViolationTimeRef.current = now;
+
+    const nextCount = forceCount !== null ? forceCount : (blurCountRef.current + 1);
+    setBlurCountWithPersistence(nextCount);
+
+    const maxAllowed = maxAllowedBlurs;
+    const isDisq = nextCount >= maxAllowed;
+
+    if (emitBlurEvent) {
+      emitBlurEvent({
+        contestId,
+        userId: user?._id || user?.id,
+        userName: user?.name,
+        teamName: user?.teamName || user?.name,
+        email: user?.email,
+        blurCount: nextCount,
+        maxAllowedBlurs: maxAllowed,
+        isDisqualified: isDisq,
+        disqualificationReason: isDisq ? `Exceeded maximum permitted violations (${nextCount}/${maxAllowed})` : '',
+        event: `${reason} (${nextCount}/${maxAllowed})`
+      });
+    }
+
+    api.post(`/contests/${contestId}/session/event`, {
+      event: `${reason} #${nextCount}`,
+      blurCount: nextCount
+    }).catch(() => {});
+
+    if (!isDisq) {
+      setWarningModalOpen(true);
+      setWarningCountdown(15);
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      warningTimerRef.current = setInterval(() => {
+        setWarningCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(warningTimerRef.current);
+            setWarningModalOpen(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      setSecurityAlert(`⚠️ SECURITY WARNING: ${reason} detected (${nextCount}/${maxAllowed})! Please return to Fullscreen immediately.`);
+    } else {
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      setWarningModalOpen(false);
+      setContestFinished(true);
+      setDisqualifiedReason(`Disqualified for exceeding maximum permitted violations (${nextCount}/${maxAllowed}). Reason: ${reason}`);
+      autoSubmitAndFinish();
+    }
+  };
+
+  // Detect page reload on mount and record violation
+  useEffect(() => {
+    const isReload = (() => {
+      try {
+        const hasReloadFlag = !!sessionStorage.getItem(reloadFlagKey);
+        const nav = performance.getEntriesByType('navigation');
+        const isNavReload = (nav && nav.length > 0 && nav[0].type === 'reload') || (performance.navigation && performance.navigation.type === 1);
+        const wasActive = !!sessionStorage.getItem(activeSessionKey);
+        return hasReloadFlag || (isNavReload && wasActive);
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    sessionStorage.setItem(activeSessionKey, 'true');
+
+    if (isReload && !contestFinished && !isAutoSubmitting) {
+      sessionStorage.removeItem(reloadFlagKey);
+      // Count reload as a proctoring violation and enforce fullscreen return
+      triggerViolation('Page refreshed during contest');
+    }
+  }, []);
+
   useEffect(() => {
     fetchContestDetails();
 
@@ -305,71 +438,165 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       });
     }, 1000);
 
-    // Window Blur Anti-Cheat
-    const handleBlur = () => {
-      if (contestFinished || isAutoSubmitting) return;
-      if (contest && contest.antiCheatEnabled === false) return;
-      const nextCount = blurCount + 1;
-      const maxAllowed = maxAllowedBlurs;
-
-      setBlurCount(nextCount);
-
-      if (emitBlurEvent) {
-        emitBlurEvent({
-          contestId: contest?._id || contest?.slug || contest?.id,
-          userId: user?._id || user?.id,
-          userName: user?.name,
-          teamName: user?.teamName || user?.name,
-          email: user?.email,
-          blurCount: nextCount,
-          maxAllowedBlurs: maxAllowed,
-          isDisqualified: nextCount >= maxAllowed,
-          event: `Tab Switch / Focus Lost (${nextCount}/${maxAllowed})`
-        });
-      }
-
-      if (nextCount < maxAllowed) {
-        setWarningModalOpen(true);
-        setWarningCountdown(15);
-        if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-        warningTimerRef.current = setInterval(() => {
-          setWarningCountdown(prev => {
-            if (prev <= 1) {
-              clearInterval(warningTimerRef.current);
-              setWarningModalOpen(false);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-        setSecurityAlert(`SECURITY WARNING: Focus lost / tab switch detected (${nextCount}/${maxAllowed})! Next violation will result in disqualification.`);
-      } else {
-        if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-        setWarningModalOpen(false);
-        setContestFinished(true);
-        setDisqualifiedReason(`Disqualified for exceeding maximum focus loss violations (${nextCount}/${maxAllowed}).`);
-        autoSubmitAndFinish();
-      }
-    };
-
-    window.addEventListener('blur', handleBlur);
-
     return () => {
       clearInterval(syncInterval);
       clearInterval(timer);
+    };
+  }, [contestFinished, isAutoSubmitting]);
+
+  // Anti-Cheat & Event Restrictions Listener
+  useEffect(() => {
+    if (contestFinished || isAutoSubmitting) return;
+
+    // 1. Right Click Prevention
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    // 2. Copy, Cut & Paste Prevention (blocks clipboard access & Windows+V)
+    const handleCopy = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Copying is disabled in secure contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    const handleCut = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Cutting is disabled in secure contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    const handlePaste = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (e.clipboardData) e.clipboardData.clearData();
+      setSecurityAlert('⚠️ Pasting & Clipboard access is strictly disabled in contest mode.');
+      setTimeout(() => setSecurityAlert(null), 3000);
+      return false;
+    };
+
+    // 3. Prevent Refresh & Clipboard Keyboard Shortcuts (F5, Ctrl+R, Ctrl+C, Ctrl+V, Ctrl+X, Shift+Insert, Ctrl+Insert)
+    const handleKeyDown = (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const key = (e.key || '').toLowerCase();
+
+      // Refresh blocking
+      if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest! Refreshing will record a proctoring violation.');
+        setTimeout(() => setSecurityAlert(null), 4000);
+        return false;
+      }
+
+      // Clipboard blocking
+      if (
+        (isCtrlOrCmd && ['c', 'v', 'x', 'insert'].includes(key)) ||
+        (e.shiftKey && key === 'insert')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+        return false;
+      }
+    };
+
+    // 4. Beforeunload Warning & Reload Flag
+    const handleBeforeUnload = (e) => {
+      if (!contestFinished && !isAutoSubmitting) {
+        sessionStorage.setItem(reloadFlagKey, JSON.stringify({
+          reloadedAt: Date.now(),
+          contestId,
+          blurCount: blurCountRef.current
+        }));
+        e.preventDefault();
+        e.returnValue = 'Refreshing the contest page will record a proctoring violation. Are you sure you want to refresh?';
+        return e.returnValue;
+      }
+    };
+
+    // 5. Blur & Visibility Change Focus Loss
+    const handleBlur = () => {
+      if (document.hidden) {
+        triggerViolation('Tab switch / window hidden');
+      } else {
+        triggerViolation('Window focus lost / tab switch');
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerViolation('Tab switch / window minimized');
+      }
+    };
+
+    // 6. Fullscreen Change Detection
+    const handleFSChange = () => {
+      const isFsNow = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+      if (!isFsNow && !showInstructionsModal) {
+        triggerViolation('Exited fullscreen mode');
+      }
+    };
+
+    window.addEventListener('contextmenu', handleContextMenu, true);
+    document.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('copy', handleCopy, true);
+    document.addEventListener('copy', handleCopy, true);
+    window.addEventListener('cut', handleCut, true);
+    document.addEventListener('cut', handleCut, true);
+    window.addEventListener('paste', handlePaste, true);
+    document.addEventListener('paste', handlePaste, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFSChange);
+    document.addEventListener('webkitfullscreenchange', handleFSChange);
+
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu, true);
+      document.removeEventListener('contextmenu', handleContextMenu, true);
+      window.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('copy', handleCopy, true);
+      window.removeEventListener('cut', handleCut, true);
+      document.removeEventListener('cut', handleCut, true);
+      window.removeEventListener('paste', handlePaste, true);
+      document.removeEventListener('paste', handlePaste, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFSChange);
+      document.removeEventListener('webkitfullscreenchange', handleFSChange);
       if (warningTimerRef.current) clearInterval(warningTimerRef.current);
     };
-  }, [blurCount, contestFinished, contest, maxAllowedBlurs]);
+  }, [blurCount, contestFinished, isAutoSubmitting, showInstructionsModal, maxAllowedBlurs]);
 
   const activeQuestion = questions[currentIdx];
 
   const handleCodeChange = (val) => {
     if (!activeQuestion || contestFinished || isAutoSubmitting) return;
-    setCodes({
+    const qId = activeQuestion._id || activeQuestion.slug;
+    const updatedCodes = {
       ...codes,
-      [activeQuestion._id || activeQuestion.slug]: val || ''
-    });
+      [qId]: val || ''
+    };
+    setCodes(updatedCodes);
+    try {
+      sessionStorage.setItem(savedCodesKey, JSON.stringify(updatedCodes));
+    } catch (e) {}
   };
 
   const handleLanguageChange = (newLang) => {
@@ -377,10 +604,14 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     if (!activeQuestion) return;
     const qId = activeQuestion._id || activeQuestion.slug;
     const qCode = activeQuestion.starterCode && activeQuestion.starterCode[newLang];
-    setCodes({
+    const updatedCodes = {
       ...codes,
       [qId]: qCode || getDefaultStarterCode(newLang)
-    });
+    };
+    setCodes(updatedCodes);
+    try {
+      sessionStorage.setItem(savedCodesKey, JSON.stringify(updatedCodes));
+    } catch (e) {}
   };
 
   const handleRunCode = async () => {
@@ -448,7 +679,50 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     if (seconds <= 0) return '00:00';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    // Disable copy, cut, paste, clipboard history keys inside Monaco
+    editor.onKeyDown((e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (
+        (isCtrlOrCmd && (e.keyCode === monaco.KeyCode.KeyV || e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyX || e.keyCode === monaco.KeyCode.Insert)) ||
+        (e.shiftKey && e.keyCode === monaco.KeyCode.Insert)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+    });
+
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      const blockEvt = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.clipboardData) e.clipboardData.clearData();
+      };
+      domNode.addEventListener('paste', blockEvt, true);
+      domNode.addEventListener('copy', blockEvt, true);
+      domNode.addEventListener('cut', blockEvt, true);
+      domNode.addEventListener('contextmenu', blockEvt, true);
+    }
+  };
+
+  const handleStartContestFromInstructions = () => {
+    setShowInstructionsModal(false);
+    enterFullscreen();
   };
 
   if (startsInSecs > 0 && !contestFinished) {
@@ -963,7 +1237,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
               </select>
             </div>
 
-            {/* Monaco Editor */}
+            {/* Monaco Editor with Full Anti-Cheat Restrictions */}
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <Editor
                 height="100%"
@@ -971,6 +1245,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
                 theme="vs"
                 value={codes[activeQuestion._id || activeQuestion.slug] || ''}
                 onChange={handleCodeChange}
+                onMount={handleEditorDidMount}
                 options={{
                   fontSize: 13,
                   fontFamily: "'IBM Plex Mono', monospace",
@@ -979,7 +1254,11 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
                   lineNumbersMinChars: 3,
                   automaticLayout: true,
                   tabSize: 4,
-                  readOnly: executing || submitting || isAutoSubmitting
+                  readOnly: executing || submitting || isAutoSubmitting,
+                  contextmenu: false,
+                  dragAndDrop: false,
+                  selectionClipboard: false,
+                  links: false
                 }}
               />
             </div>
@@ -1473,25 +1752,25 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
                 <span style={{ color: '#2563EB', fontWeight: 700 }}>1.</span>
-                <span style={{ color: '#334155' }}><strong>Fullscreen & Focus:</strong> Stay in fullscreen mode. Tab switching or minimizing the window will trigger security warnings.</span>
+                <span style={{ color: '#334155' }}><strong>Fullscreen Enforcement:</strong> You must remain in fullscreen mode throughout the contest. Exiting fullscreen will log a security violation.</span>
               </div>
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
                 <span style={{ color: '#DC2626', fontWeight: 700 }}>2.</span>
-                <span style={{ color: '#334155' }}><strong>Violation Limit:</strong> Exceeding <strong>{maxAllowedBlurs} allowed tab switches</strong> will instantly disqualify you from the contest.</span>
+                <span style={{ color: '#334155' }}><strong>Strict Anti-Cheat & Refresh:</strong> Right-click, Copy/Paste (including Win+V), and Page Refresh are restricted. Refreshing will record an immediate proctoring violation ({maxAllowedBlurs} max allowed).</span>
               </div>
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
                 <span style={{ color: '#2563EB', fontWeight: 700 }}>3.</span>
-                <span style={{ color: '#334155' }}><strong>Finish Contest Lock:</strong> The "Finish Contest" button is locked until the final 15 minutes of the contest.</span>
+                <span style={{ color: '#334155' }}><strong>Finish Contest Lock:</strong> The "Finish Contest" button unlocks during the final 15 minutes of the contest.</span>
               </div>
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
                 <span style={{ color: '#16A34A', fontWeight: 700 }}>4.</span>
-                <span style={{ color: '#334155' }}><strong>Autosave & Auto-Submit:</strong> Your code is saved continuously and will auto-submit automatically when the countdown hits zero.</span>
+                <span style={{ color: '#334155' }}><strong>Autosave & Auto-Submit:</strong> Your code is continuously preserved and will automatically submit when the contest timer expires.</span>
               </div>
             </div>
 
             <button
               className="btn btn-primary"
-              onClick={() => setShowInstructionsModal(false)}
+              onClick={handleStartContestFromInstructions}
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
@@ -1504,7 +1783,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
                 borderRadius: '8px'
               }}
             >
-              <span>I Understand, Start Solving</span>
+              <span>Enter Fullscreen & Start Solving</span>
               <ArrowRight size={16} />
             </button>
           </div>

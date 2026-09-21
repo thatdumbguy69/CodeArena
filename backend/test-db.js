@@ -1,6 +1,11 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 
-const uri = "mongodb://tabraizsmd_db_user:M3EcmHNdVHln8Utf@ac-qjeax1t-shard-00-00.31mtvlo.mongodb.net:27017,ac-qjeax1t-shard-00-01.31mtvlo.mongodb.net:27017,ac-qjeax1t-shard-00-02.31mtvlo.mongodb.net:27017/My-Platform?ssl=true&replicaSet=atlas-kcsha4-shard-0&authSource=admin&retryWrites=true&w=majority&appName=Cluster0";
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+  console.error("Please set MONGODB_URI in .env");
+  process.exit(1);
+}
 
 async function run() {
   try {

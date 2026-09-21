@@ -131,7 +131,13 @@ export const AdminPortal = ({
       return s ? JSON.parse(s) : [];
     } catch (e) { return []; }
   });
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(() => {
+    try {
+      return !sessionStorage.getItem('codearena_admin_suite_loaded');
+    } catch (e) {
+      return false;
+    }
+  });
   const [loadStep, setLoadStep] = useState(0);
 
   // Modal State
@@ -196,6 +202,9 @@ export const AdminPortal = ({
       console.error('Error loading admin portal data:', err);
     } finally {
       if (isInitial) {
+        try {
+          sessionStorage.setItem('codearena_admin_suite_loaded', 'true');
+        } catch (e) {}
         setTimeout(() => setInitialLoading(false), 200);
       }
     }
@@ -371,7 +380,8 @@ export const AdminPortal = ({
   }, [socket, fetchData, joinAdminProctoring]);
 
   useEffect(() => {
-    fetchData(initialLoading);
+    const isFirstTimeAdminLoad = !sessionStorage.getItem('codearena_admin_suite_loaded');
+    fetchData(isFirstTimeAdminLoad);
   }, [fetchData]);
 
   // Throttled background sync on section change
@@ -520,8 +530,9 @@ export const AdminPortal = ({
 
   const handleDeleteAllStudents = async () => {
     try {
-      await api.delete('/auth/users/bulk-students');
+      await api.delete('/auth/users/all-students');
       setUsersList(prev => prev.filter(u => u.role === 'admin'));
+      setSubmissions([]);
       fetchData(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Error deleting all students');
