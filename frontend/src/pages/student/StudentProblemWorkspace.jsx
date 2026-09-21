@@ -449,20 +449,14 @@ export const StudentProblemWorkspace = ({
 
     // 2. Isolated Internal Contest Copy / Cut / Paste (Smart Interviews style)
     const handleCopy = (e) => {
-      let selectedText = '';
-      if (editorRef.current) {
-        const sel = editorRef.current.getSelection();
-        if (sel && !sel.isEmpty()) {
-          selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
-        }
+      if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
+        return;
       }
-      if (!selectedText) {
-        selectedText = window.getSelection()?.toString() || '';
-      }
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
+      const sel = window.getSelection()?.toString() || '';
+      if (sel) {
+        contestClipboardRef.current = sel;
         if (e.clipboardData) {
-          e.clipboardData.setData('text/plain', selectedText);
+          e.clipboardData.setData('text/plain', sel);
         }
       }
       e.preventDefault();
@@ -471,23 +465,8 @@ export const StudentProblemWorkspace = ({
     };
 
     const handleCut = (e) => {
-      if (editorRef.current) {
-        const sel = editorRef.current.getSelection();
-        if (sel && !sel.isEmpty()) {
-          const selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
-          if (selectedText) {
-            contestClipboardRef.current = selectedText;
-            editorRef.current.executeEdits('contest-cut', [{
-              range: sel,
-              text: '',
-              forceMoveMarkers: true
-            }]);
-            editorRef.current.pushUndoStop();
-            if (e.clipboardData) {
-              e.clipboardData.setData('text/plain', selectedText);
-            }
-          }
-        }
+      if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
+        return;
       }
       e.preventDefault();
       e.stopPropagation();
@@ -517,7 +496,7 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (Ctrl+V, Ctrl+C, Ctrl+X, Shift+Insert, F5, Ctrl+R)
+    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert)
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
@@ -622,31 +601,65 @@ export const StudentProblemWorkspace = ({
 
     const copyInternal = () => {
       const selection = editor.getSelection();
-      if (!selection || selection.isEmpty()) return;
-      const selectedText = editor.getModel()?.getValueInRange(selection);
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
-        try {
-          navigator.clipboard.writeText(selectedText).catch(() => {});
-        } catch (e) {}
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+          }
+        }
       }
     };
 
     const cutInternal = () => {
       const selection = editor.getSelection();
-      if (!selection || selection.isEmpty()) return;
-      const selectedText = editor.getModel()?.getValueInRange(selection);
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
-        editor.executeEdits('contest-cut', [{
-          range: selection,
-          text: '',
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-        try {
-          navigator.clipboard.writeText(selectedText).catch(() => {});
-        } catch (e) {}
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+          editor.executeEdits('contest-cut', [{
+            range: selection,
+            text: '',
+            forceMoveMarkers: true
+          }]);
+          editor.pushUndoStop();
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const model = editor.getModel();
+          const lineText = model?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined && model) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+            const range = pos.lineNumber < model.getLineCount()
+              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
+              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
+            editor.executeEdits('contest-cut-line', [{
+              range,
+              text: '',
+              forceMoveMarkers: true
+            }]);
+            editor.pushUndoStop();
+          }
+        }
       }
     };
 
@@ -695,7 +708,6 @@ export const StudentProblemWorkspace = ({
       }, true);
 
       domNode.addEventListener('cut', (e) => {
-        cutInternal();
         if (e.clipboardData && contestClipboardRef.current) {
           e.clipboardData.setData('text/plain', contestClipboardRef.current);
         }
@@ -976,7 +988,7 @@ export const StudentProblemWorkspace = ({
       const res = await api.post('/submissions/run', {
         questionId: qId,
         language,
-        code: codeMap[language] || defaultBoilerplates[language]
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')
       });
 
       const anyStderr = (res.data.testResults && res.data.testResults.find(d => d.stderr)?.stderr) || res.data.stderr;
@@ -1011,7 +1023,7 @@ export const StudentProblemWorkspace = ({
       const res = await api.post('/submissions/submit', {
         questionId: qId,
         language,
-        code: codeMap[language] || defaultBoilerplates[language],
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || ''),
         contestId: contestMode && contest ? (contest._id || contest.id || contest.slug) : null,
         blurCount: blurCountRef.current || 0,
         antiCheatLogs: antiCheatLogsRef.current || []
@@ -1880,7 +1892,7 @@ export const StudentProblemWorkspace = ({
               height="100%"
               language={language === 'cpp' || language === 'c' ? 'cpp' : language}
               theme="vs"
-              value={codeMap[language] || defaultBoilerplates[language]}
+              value={codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')}
               onChange={handleCodeChange}
               onMount={handleEditorDidMount}
               options={{

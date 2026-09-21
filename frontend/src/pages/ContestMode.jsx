@@ -460,20 +460,14 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
     // 2. Isolated Internal Contest Copy / Cut / Paste (Smart Interviews style)
     const handleCopy = (e) => {
-      let selectedText = '';
-      if (editorRef.current) {
-        const sel = editorRef.current.getSelection();
-        if (sel && !sel.isEmpty()) {
-          selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
-        }
+      if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
+        return;
       }
-      if (!selectedText) {
-        selectedText = window.getSelection()?.toString() || '';
-      }
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
+      const sel = window.getSelection()?.toString() || '';
+      if (sel) {
+        contestClipboardRef.current = sel;
         if (e.clipboardData) {
-          e.clipboardData.setData('text/plain', selectedText);
+          e.clipboardData.setData('text/plain', sel);
         }
       }
       e.preventDefault();
@@ -482,23 +476,8 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     };
 
     const handleCut = (e) => {
-      if (editorRef.current) {
-        const sel = editorRef.current.getSelection();
-        if (sel && !sel.isEmpty()) {
-          const selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
-          if (selectedText) {
-            contestClipboardRef.current = selectedText;
-            editorRef.current.executeEdits('contest-cut', [{
-              range: sel,
-              text: '',
-              forceMoveMarkers: true
-            }]);
-            editorRef.current.pushUndoStop();
-            if (e.clipboardData) {
-              e.clipboardData.setData('text/plain', selectedText);
-            }
-          }
-        }
+      if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
+        return;
       }
       e.preventDefault();
       e.stopPropagation();
@@ -528,7 +507,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (Ctrl+V, Ctrl+C, Ctrl+X, Shift+Insert, F5, Ctrl+R)
+    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert)
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
@@ -740,31 +719,65 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
     const copyInternal = () => {
       const selection = editor.getSelection();
-      if (!selection || selection.isEmpty()) return;
-      const selectedText = editor.getModel()?.getValueInRange(selection);
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
-        try {
-          navigator.clipboard.writeText(selectedText).catch(() => {});
-        } catch (e) {}
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+          }
+        }
       }
     };
 
     const cutInternal = () => {
       const selection = editor.getSelection();
-      if (!selection || selection.isEmpty()) return;
-      const selectedText = editor.getModel()?.getValueInRange(selection);
-      if (selectedText) {
-        contestClipboardRef.current = selectedText;
-        editor.executeEdits('contest-cut', [{
-          range: selection,
-          text: '',
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-        try {
-          navigator.clipboard.writeText(selectedText).catch(() => {});
-        } catch (e) {}
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+          editor.executeEdits('contest-cut', [{
+            range: selection,
+            text: '',
+            forceMoveMarkers: true
+          }]);
+          editor.pushUndoStop();
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const model = editor.getModel();
+          const lineText = model?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined && model) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+            const range = pos.lineNumber < model.getLineCount()
+              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
+              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
+            editor.executeEdits('contest-cut-line', [{
+              range,
+              text: '',
+              forceMoveMarkers: true
+            }]);
+            editor.pushUndoStop();
+          }
+        }
       }
     };
 
@@ -813,7 +826,6 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       }, true);
 
       domNode.addEventListener('cut', (e) => {
-        cutInternal();
         if (e.clipboardData && contestClipboardRef.current) {
           e.clipboardData.setData('text/plain', contestClipboardRef.current);
         }
