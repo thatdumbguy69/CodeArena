@@ -658,14 +658,14 @@ const initialUsersList = [
     lastLogin: new Date()
   },
   {
-    _id: 'mem_user_student_1',
-    name: 'Demo Student',
-    teamName: 'Coders Club Team 1',
-    email: 'student@codearena.com',
-    password: bcrypt.hashSync('student123', 8),
-    role: 'student',
-    score: 100,
-    solvedCount: 1,
+    _id: 'mem_user_admin_2',
+    name: 'SMD Tabraiz (ADMIN)',
+    teamName: 'Administration',
+    email: 'admin@platform.com',
+    password: bcrypt.hashSync('Shamstabraiz@7931', 8),
+    role: 'admin',
+    score: 0,
+    solvedCount: 0,
     createdAt: new Date(),
     lastLogin: new Date()
   }
@@ -741,10 +741,7 @@ const connectDB = async () => {
     isConnected = true;
     console.log('MongoDB connected successfully (Connection Pool: 50 max sockets)');
     
-    // Synchronize any locally saved users to MongoDB so no accounts are lost
-    await syncLocalUsersWithMongo();
-
-    // Auto-seed database if empty
+    // Auto-seed admin accounts if empty
     await seedDatabase();
   } catch (err) {
     console.error('\n================================================================');
@@ -759,44 +756,9 @@ const User = require('../models/User');
 const Question = require('../models/Question');
 const Contest = require('../models/Contest');
 
-const syncLocalUsersWithMongo = async () => {
-  try {
-    const localUsers = loadLocalUsers();
-    if (!localUsers || localUsers.length === 0) return;
-    
-    const emails = localUsers.map(u => u.email.toLowerCase());
-    const existingInDb = await User.find({ email: { $in: emails } }, { email: 1 }).lean();
-    const existingSet = new Set(existingInDb.map(u => u.email.toLowerCase()));
-    
-    const toInsert = [];
-    for (const u of localUsers) {
-      if (!existingSet.has(u.email.toLowerCase())) {
-        toInsert.push({
-          name: u.name,
-          teamName: u.teamName || u.name,
-          email: u.email.toLowerCase(),
-          password: u.password,
-          role: u.role || 'student',
-          score: u.score || 0,
-          solvedCount: u.solvedCount || 0,
-          createdAt: u.createdAt || new Date()
-        });
-        existingSet.add(u.email.toLowerCase());
-      }
-    }
-    if (toInsert.length > 0) {
-      console.log(`Migrating ${toInsert.length} offline/local users to MongoDB...`);
-      await User.insertMany(toInsert, { ordered: false }).catch(() => {});
-    }
-  } catch (err) {
-    console.warn('Sync local users warning:', err.message);
-  }
-};
-
 const seedDatabase = async () => {
   try {
     const adminPass = await bcrypt.hash('Shamstabraiz@7931', 10);
-    const studentPass = await bcrypt.hash('student123', 10);
 
     const adminAccounts = [
       { email: 'tabraizsmd@gmail.com', name: 'SMD Tabraiz (ADMIN)', teamName: 'Administration', role: 'admin' },
@@ -823,22 +785,6 @@ const seedDatabase = async () => {
           adminUser.role = 'admin';
           await adminUser.save();
         }
-      }
-
-      // Seed Demo Student if missing in MongoDB
-      const studentUser = await User.findOne({ email: 'student@codearena.com' });
-      if (!studentUser) {
-        await User.create({
-          name: 'Demo Student',
-          teamName: 'Coders Club Team 1',
-          email: 'student@codearena.com',
-          password: studentPass,
-          role: 'student',
-          score: 100,
-          solvedCount: 1,
-          createdAt: new Date(),
-          lastLogin: new Date()
-        });
       }
 
       // Remove any legacy mock contests from database
