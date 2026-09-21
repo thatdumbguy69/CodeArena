@@ -556,47 +556,60 @@
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "tabraizsmd@gmail.com",
-    "password": "$2a$10$BUbI7LGNPDz9ZullWS5gOOnUs8BkGy6/.jz9zwPY7AvAuNUSo6r5C",
+    "password": "$2a$10$9iDOsP225TI3huqOX29fPOtTh1S4mvTqojeu8rj5GotSrcI6UytwK",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T10:32:49.237Z",
-    "lastLogin": "2026-09-21T10:32:49.237Z"
+    "createdAt": "2026-09-21T10:34:48.190Z",
+    "lastLogin": "2026-09-21T10:34:48.190Z"
   },
   {
     "_id": "admin_user_1",
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "admin@platform.com",
-    "password": "$2a$10$/wWW//PoMTbDM/Mu5MlVqeCrodWQEyQhhxHcZU0coDEFFHDZIu8TW",
+    "password": "$2a$10$J4pll.q.jCPEBdg6DO.UxOiZVYgklTEgqLZICR79qKyMGKi3CQuEy",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T10:32:49.361Z",
-    "lastLogin": "2026-09-21T10:32:49.361Z"
+    "createdAt": "2026-09-21T10:34:48.336Z",
+    "lastLogin": "2026-09-21T10:34:48.336Z"
   },
   {
     "_id": "student_user_2",
     "name": "Student Participant",
     "teamName": "Coders Club Team 1",
     "email": "student@codearena.com",
-    "password": "$2a$10$tHk8JLLUnJhAM.AJC5T0hOjGW7Sybf0vS3fp9Sf4bvXewat5QqbHK",
+    "password": "$2a$10$axWOciB8xmnI3H6HuUVkvuW1Wt.omNDihGQLyjKHVNCoK.URvdfYW",
     "role": "student",
     "score": 100,
     "solvedCount": 1,
-    "createdAt": "2026-09-21T10:32:49.474Z",
-    "lastLogin": "2026-09-21T10:32:49.474Z"
+    "createdAt": "2026-09-21T10:34:48.466Z",
+    "lastLogin": "2026-09-21T10:34:48.466Z"
   },
   {
     "_id": "student_user_3",
     "name": "Student Participant",
     "teamName": "Coders Club Team 2",
     "email": "student@platform.com",
-    "password": "$2a$10$SLdbG9wXCRCodneTp.zqdOx0W2CYs4FshSOJQTY4uITCSAD2to5Fa",
+    "password": "$2a$10$vQmJO/1PtpRfBm49zmHhjuZYf8hyXJnfQKsSw2lXk8RN4S4KaTYcO",
     "role": "student",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T10:32:49.587Z",
-    "lastLogin": "2026-09-21T10:32:49.587Z"
+    "createdAt": "2026-09-21T10:34:48.589Z",
+    "lastLogin": "2026-09-21T10:34:48.589Z"
+  },
+  {
+    "id": "6ab1086d6517a0edcf5434fe",
+    "_id": "6ab1086d6517a0edcf5434fe",
+    "name": "test",
+    "teamName": "test",
+    "email": "test1@gmail.com",
+    "role": "student",
+    "score": 0,
+    "solvedCount": 0,
+    "createdAt": "2026-09-21T10:35:25.842Z",
+    "lastLogin": "2026-09-21T10:35:25.842Z",
+    "password": "$2a$10$EX43ti.9dDM5FCR6oHJhF.U.72EOpqXQtov7dZUWD4Mfx.bF4AJ0G"
   }
 ]
