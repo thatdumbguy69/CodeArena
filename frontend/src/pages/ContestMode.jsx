@@ -71,6 +71,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
   // Non-blinking Finish Contest Tooltip Hover State
   const [hoveringFinish, setHoveringFinish] = useState(false);
+  const [showFinishConfirmModal, setShowFinishConfirmModal] = useState(false);
 
   // Real-Time Left-Side Host Timer Adjustment Toast
   const [timerToast, setTimerToast] = useState(null);
@@ -287,14 +288,14 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
         if (extra !== undefined && extra !== null && Number(extra) !== 0) {
           const numExtra = Number(extra);
           if (numExtra > 0) {
-            msg = `⏱️ Contest Time Extended: +${numExtra} min${numExtra > 1 ? 's' : ''} added by Host Admin!`;
+            msg = `⏱️ Contest time has been increased by +${numExtra} min${numExtra > 1 ? 's' : ''} by Host Admin!`;
             tType = 'added';
           } else {
-            msg = `⏱️ Contest Time Reduced: ${Math.abs(numExtra)} min${Math.abs(numExtra) > 1 ? 's' : ''} deducted by Host Admin!`;
+            msg = `⏱️ Contest time has been decreased by ${Math.abs(numExtra)} min${Math.abs(numExtra) > 1 ? 's' : ''} by Host Admin!`;
             tType = 'reduced';
           }
         } else {
-          msg = `⏱️ Contest Timer Synchronized by Host Admin (${formatTime(newRemSecs)} remaining)`;
+          msg = `⏱️ Contest duration updated: ${formatTime(newRemSecs)} remaining`;
           tType = 'sync';
         }
 
@@ -339,12 +340,14 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     };
 
     socket.on('contest:force_submit', handleForceSubmit);
+    socket.on('contest:ended', handleForceSubmit);
     socket.on('contest:timer_sync', handleTimerSync);
     socket.on('user:disqualified', handleDisqualified);
     socket.on('user:qualified', handleQualified);
 
     return () => {
       socket.off('contest:force_submit', handleForceSubmit);
+      socket.off('contest:ended', handleForceSubmit);
       socket.off('contest:timer_sync', handleTimerSync);
       socket.off('user:disqualified', handleDisqualified);
       socket.off('user:qualified', handleQualified);
@@ -433,8 +436,17 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     }
   };
 
-  // Detect page reload on mount and record violation
+  // Detect page reload on mount and record violation unless emergency coordinator bypass
   useEffect(() => {
+    const isCoordinatorBypass = sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true';
+    if (isCoordinatorBypass) {
+      sessionStorage.removeItem('codearena_coordinator_bypass_refresh');
+      sessionStorage.removeItem(reloadFlagKey);
+      setSecurityAlert('🔑 Coordinator Emergency Reload applied. No integrity violation recorded.');
+      setTimeout(() => setSecurityAlert(null), 5000);
+      return;
+    }
+
     const isReload = (() => {
       try {
         const hasReloadFlag = !!sessionStorage.getItem(reloadFlagKey);
@@ -467,21 +479,34 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     // 1-second Countdown Interval
     const timer = setInterval(() => {
       setStartsInSecs(prevStarts => {
-        if (prevStarts > 1) return prevStarts - 1;
-        if (prevStarts === 1) {
+        let nextStarts = 0;
+        if (contestData?.startTime) {
+          nextStarts = Math.max(0, Math.floor((new Date(contestData.startTime).getTime() - Date.now()) / 1000));
+        } else {
+          nextStarts = Math.max(0, prevStarts - 1);
+        }
+
+        if (nextStarts <= 0 && prevStarts > 0) {
+          const toastId = Date.now();
+          setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
+          setTimeout(() => setTimerToast(p => (p?.id === toastId ? null : p)), 7000);
           fetchContestDetails();
           return 0;
         }
-        return 0;
+        return nextStarts;
       });
 
       setTimeLeft(prev => {
-        if (prev <= 1) {
+        const actualLeft = contestEndTimeRef.current
+          ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000))
+          : Math.max(0, prev - 1);
+
+        if (actualLeft <= 0) {
           clearInterval(timer);
           autoSubmitAndFinish();
           return 0;
         }
-        return prev - 1;
+        return actualLeft;
       });
     }, 1000);
 
@@ -553,10 +578,24 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert)
+    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert) + Hidden Coordinator Refresh
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
+
+      // Hidden Coordinator Emergency Refresh: Ctrl + Alt + Shift + R OR Ctrl + Shift + F5
+      const isCoordinatorRefresh = 
+        (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'r') ||
+        (isCtrlOrCmd && e.shiftKey && (key === 'f5' || e.keyCode === 116));
+
+      if (isCoordinatorRefresh) {
+        e.preventDefault();
+        e.stopPropagation();
+        sessionStorage.setItem('codearena_coordinator_bypass_refresh', 'true');
+        sessionStorage.removeItem(reloadFlagKey);
+        window.location.reload();
+        return false;
+      }
 
       // Refresh blocking
       if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
@@ -593,6 +632,9 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
     // 4. Beforeunload Warning & Reload Flag
     const handleBeforeUnload = (e) => {
+      if (sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true') {
+        return;
+      }
       if (!contestFinished && !isAutoSubmitting) {
         sessionStorage.setItem(reloadFlagKey, JSON.stringify({
           reloadedAt: Date.now(),
@@ -1261,12 +1303,11 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
                 onClick={() => {
                   if (!canFinishContest) {
                     const rem = Math.max(0, timeLeft - 900);
-                    alert(`⏳ Finish Contest is Locked\n\nPer contest rules, this button only activates during the final 15 minutes before the contest ends.\n\nContest Time Remaining: ${formatTime(timeLeft)}\nUnlocks in: ${formatTime(rem)}`);
+                    setSecurityAlert(`⏳ Finish Contest is locked: It unlocks during the final 15 minutes of the contest (in ${formatTime(rem)}).`);
+                    setTimeout(() => setSecurityAlert(null), 4000);
                     return;
                   }
-                  if (window.confirm("Are you sure you want to finish and submit the contest now?\n\nAll current solutions will be submitted and your contest session will be marked as completed.")) {
-                    autoSubmitAndFinish();
-                  }
+                  setShowFinishConfirmModal(true);
                 }}
                 disabled={isAutoSubmitting}
                 style={{
@@ -2033,6 +2074,99 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
           <div>
             <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#93C5FD' }}>Host Sync Notice</div>
             <div style={{ fontSize: '0.82rem', color: '#F1F5F9', marginTop: '2px' }}>{timerToast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Finish Contest Confirmation Modal */}
+      {showFinishConfirmModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          userSelect: 'none'
+        }}>
+          <div className="card" style={{
+            maxWidth: '520px',
+            width: '100%',
+            background: '#FFFFFF',
+            borderRadius: '20px',
+            padding: '2.5rem 2.25rem',
+            textAlign: 'center',
+            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.3)',
+            border: '2px solid #EF4444'
+          }}>
+            <div style={{
+              width: '68px',
+              height: '68px',
+              borderRadius: '50%',
+              background: '#FEE2E2',
+              color: '#DC2626',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '1.25rem',
+              boxShadow: '0 0 20px rgba(220, 38, 38, 0.25)'
+            }}>
+              <CheckCircle size={38} />
+            </div>
+
+            <h3 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0F172A', margin: '0 0 0.5rem' }}>
+              Finish & Submit Contest?
+            </h3>
+
+            <p style={{ color: '#475569', fontSize: '0.94rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+              Are you sure you want to conclude and submit your contest solutions now? Your code will be finalized and your attempt will be submitted for scoring.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowFinishConfirmModal(false)}
+                disabled={isAutoSubmitting}
+                style={{
+                  padding: '0.7rem 1.4rem',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: '1px solid #CBD5E1',
+                  background: '#F8FAFC',
+                  color: '#334155'
+                }}
+              >
+                Cancel & Continue Solving
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  setShowFinishConfirmModal(false);
+                  autoSubmitAndFinish();
+                }}
+                disabled={isAutoSubmitting}
+                style={{
+                  padding: '0.7rem 1.4rem',
+                  fontWeight: 700,
+                  borderRadius: '8px',
+                  background: '#DC2626',
+                  color: '#FFFFFF',
+                  border: '1px solid #DC2626',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: '0 4px 14px rgba(220, 38, 38, 0.35)'
+                }}
+              >
+                {isAutoSubmitting ? 'Submitting...' : 'Yes, Finish Contest'}
+              </button>
+            </div>
           </div>
         </div>
       )}

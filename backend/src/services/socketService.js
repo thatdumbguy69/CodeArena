@@ -118,11 +118,13 @@ const init = (httpServer) => {
     socket.on('admin:end_contest', (data) => {
       const { contestId } = data || {};
       if (contestId) {
-        io.to(`contest_${contestId}`).emit('contest:force_submit', {
-          contestId,
-          timestamp: new Date()
-        });
-        io.emit('contest:ended', { contestId });
+        const payload = { contestId, timestamp: new Date() };
+        io.to(`contest_${contestId}`).emit('contest:force_submit', payload);
+        io.to(`contest_${contestId}`).emit('contest:ended', payload);
+        io.emit('contest:force_submit', payload);
+        io.emit('contest:ended', payload);
+        io.to(`contest_${contestId}`).emit('contest:timer_sync', { contestId, remainingSecs: 0, extraMinutes: 0, timestamp: new Date() });
+        io.emit('contest:timer_sync', { contestId, remainingSecs: 0, extraMinutes: 0, timestamp: new Date() });
       }
     });
 
@@ -214,10 +216,13 @@ const emitTimerSync = (contestId, remainingSecs, extraMinutes = 0) => {
 // Broadcasts contest ended / force submit to all participants in contest
 const emitContestEnded = (contestId) => {
   if (!io || !contestId) return;
-  io.to(`contest_${contestId}`).emit('contest:force_submit', {
-    contestId,
-    timestamp: new Date()
-  });
+  const payload = { contestId, timestamp: new Date() };
+  io.to(`contest_${contestId}`).emit('contest:force_submit', payload);
+  io.to(`contest_${contestId}`).emit('contest:ended', payload);
+  io.emit('contest:force_submit', payload);
+  io.emit('contest:ended', payload);
+  io.to(`contest_${contestId}`).emit('contest:timer_sync', { contestId, remainingSecs: 0, extraMinutes: 0, timestamp: new Date() });
+  io.emit('contest:timer_sync', { contestId, remainingSecs: 0, extraMinutes: 0, timestamp: new Date() });
 };
 
 module.exports = {
