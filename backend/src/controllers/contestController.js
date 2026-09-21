@@ -3,6 +3,7 @@ const Question = require('../models/Question');
 const ContestSession = require('../models/ContestSession');
 const SystemSetting = require('../models/SystemSetting');
 const { getIsConnected, inMemoryStore } = require('../config/db');
+const { emitTimerSync } = require('../services/socketService');
 
 const slugify = (text) => {
   return text
@@ -349,7 +350,15 @@ const updateContest = async (req, res) => {
       await contest.save();
       bustContestsCache();
       const populated = await Contest.findById(contest._id).populate('problems');
-      return res.json({ message: 'Contest updated successfully', contest: computeContestRealtime(populated) });
+      const realtimeContest = computeContestRealtime(populated);
+
+      if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
+        const remSecs = Math.max(0, Math.floor((new Date(realtimeContest.endTime).getTime() - Date.now()) / 1000));
+        emitTimerSync(contest._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(contest.slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+      }
+
+      return res.json({ message: 'Contest updated successfully', contest: realtimeContest });
     } else {
       const list = inMemoryStore.contests || [];
       const idx = list.findIndex(c => String(c._id) === id || c.slug === id);
@@ -381,6 +390,13 @@ const updateContest = async (req, res) => {
 
       list[idx] = computeContestRealtime(c);
       bustContestsCache();
+
+      if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
+        const remSecs = Math.max(0, Math.floor((new Date(list[idx].endTime).getTime() - Date.now()) / 1000));
+        emitTimerSync(list[idx]._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(list[idx].slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+      }
+
       return res.json({ message: 'Contest updated successfully', contest: list[idx] });
     }
   } catch (err) {

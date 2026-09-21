@@ -149,41 +149,8 @@ const login = async(req, res) => {
                         createdAt: now,
                         lastLogin: now
                     });
-                } else if ((email === 'student@codearena.com' || email === 'student@platform.com') && password === 'student123') {
-                    const hashedPassword = await bcrypt.hash('student123', 10);
-                    user = await User.create({
-                        name: 'Demo Student',
-                        teamName: 'Coders Club',
-                        email,
-                        password: hashedPassword,
-                        role: 'student',
-                        score: 100,
-                        solvedCount: 1,
-                        createdAt: now,
-                        lastLogin: now
-                    });
                 } else {
-                    const localUsers = loadLocalUsers() || [];
-                    const localMatch = localUsers.find(u => u.email.toLowerCase() === email);
-                    if (localMatch) {
-                        const isLocalMatch = await bcrypt.compare(password, localMatch.password);
-                        if (isLocalMatch) {
-                            user = await User.create({
-                                name: localMatch.name,
-                                teamName: localMatch.teamName || localMatch.name,
-                                email: localMatch.email.toLowerCase(),
-                                password: localMatch.password,
-                                role: localMatch.role || 'student',
-                                score: localMatch.score || 0,
-                                solvedCount: localMatch.solvedCount || 0,
-                                createdAt: localMatch.createdAt || now,
-                                lastLogin: now
-                            });
-                        }
-                    }
-                    if (!user) {
-                        return res.status(400).json({ message: 'Invalid credentials - user does not exist' });
-                    }
+                    return res.status(400).json({ message: 'Invalid credentials - user does not exist' });
                 }
             }
 

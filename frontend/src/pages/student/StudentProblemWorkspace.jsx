@@ -89,6 +89,13 @@ export const StudentProblemWorkspace = ({
     return false;
   });
 
+  const [timerToast, setTimerToast] = useState(null);
+  const contestEndTimeRef = React.useRef(
+    contest?.endTime
+      ? new Date(contest.endTime)
+      : (contest?.remainingSecs ? new Date(Date.now() + contest.remainingSecs * 1000) : null)
+  );
+
   const [isManuallyFinished, setIsManuallyFinished] = useState(false);
   const [finishModalState, setFinishModalState] = useState(null); // null | 'locked' | 'confirm'
   const [isFinishingContest, setIsFinishingContest] = useState(false);
@@ -244,9 +251,42 @@ export const StudentProblemWorkspace = ({
     };
 
     const handleTimerSync = (data) => {
-      if (data?.remainingSecs !== undefined) {
-        setContestTimeLeft(data.remainingSecs);
-        if (data.remainingSecs <= 0) {
+      if (!data) return;
+      const myContestId = String(contest?._id || contest?.id || contest?.slug || '');
+      const incomingId = String(data.contestId || '');
+      if (incomingId && myContestId && incomingId !== myContestId && !myContestId.includes(incomingId) && !incomingId.includes(myContestId)) {
+        return;
+      }
+
+      if (data.remainingSecs !== undefined && data.remainingSecs !== null) {
+        const newRemSecs = Math.max(0, parseInt(data.remainingSecs, 10));
+        setContestTimeLeft(newRemSecs);
+        contestEndTimeRef.current = new Date(Date.now() + newRemSecs * 1000);
+
+        const extra = data.extraMinutes;
+        let msg = '';
+        let tType = 'sync';
+        if (extra !== undefined && extra !== null && Number(extra) !== 0) {
+          const numExtra = Number(extra);
+          if (numExtra > 0) {
+            msg = `⏱️ Contest Time Extended: +${numExtra} min${numExtra > 1 ? 's' : ''} added by Host Admin!`;
+            tType = 'added';
+          } else {
+            msg = `⏱️ Contest Time Reduced: ${Math.abs(numExtra)} min${Math.abs(numExtra) > 1 ? 's' : ''} deducted by Host Admin!`;
+            tType = 'reduced';
+          }
+        } else {
+          msg = `⏱️ Contest Timer Synchronized by Host Admin (${formatSecs(newRemSecs)} remaining)`;
+          tType = 'sync';
+        }
+
+        const toastId = Date.now();
+        setTimerToast({ id: toastId, message: msg, type: tType });
+        setTimeout(() => {
+          setTimerToast(prev => (prev?.id === toastId ? null : prev));
+        }, 6000);
+
+        if (newRemSecs <= 0) {
           handleAutoSubmitContest();
         }
       }
@@ -787,7 +827,17 @@ export const StudentProblemWorkspace = ({
 
   useEffect(() => {
     if (contestMode && contest) {
+      if (contest.endTime) {
+        contestEndTimeRef.current = new Date(contest.endTime);
+      } else if (contest.remainingSecs) {
+        contestEndTimeRef.current = new Date(Date.now() + contest.remainingSecs * 1000);
+      }
+
       const getLeftSecs = () => {
+        if (contestEndTimeRef.current) {
+          const diff = Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000);
+          return Math.max(0, diff);
+        }
         if (contest.endTime) {
           const diff = Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000);
           return Math.max(0, diff);
@@ -799,8 +849,8 @@ export const StudentProblemWorkspace = ({
 
       const timer = setInterval(() => {
         setContestTimeLeft(prev => {
-          const actualLeft = contest.endTime
-            ? Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000))
+          const actualLeft = contestEndTimeRef.current
+            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000))
             : Math.max(0, prev - 1);
 
           if (actualLeft <= 0) {
@@ -1431,7 +1481,52 @@ export const StudentProblemWorkspace = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
+      {/* Top-Right Real-Time Contest Timer Toast Notification */}
+      {timerToast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '1.25rem',
+            right: '1.25rem',
+            zIndex: 9999999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.85rem 1.15rem',
+            borderRadius: '12px',
+            background: timerToast.type === 'reduced' ? '#FEF2F2' : (timerToast.type === 'added' ? '#F0FDF4' : '#EFF6FF'),
+            border: `2px solid ${timerToast.type === 'reduced' ? '#F87171' : (timerToast.type === 'added' ? '#4ADE80' : '#60A5FA')}`,
+            boxShadow: '0 12px 32px -4px rgba(0, 0, 0, 0.22), 0 4px 12px -2px rgba(0, 0, 0, 0.1)',
+            color: timerToast.type === 'reduced' ? '#991B1B' : (timerToast.type === 'added' ? '#166534' : '#1E40AF'),
+            fontWeight: 700,
+            fontSize: '0.9rem',
+            animation: 'fadeIn 0.3s ease-out',
+            maxWidth: '440px'
+          }}
+        >
+          <Clock size={20} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, lineHeight: 1.4 }}>{timerToast.message}</span>
+          <button
+            onClick={() => setTimerToast(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0.75
+            }}
+            title="Dismiss notification"
+          >
+            <XCircle size={18} />
+          </button>
+        </div>
+      )}
+
       {/* Workspace Top Header Bar */}
       <div style={{
         height: '52px',

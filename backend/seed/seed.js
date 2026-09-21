@@ -6,7 +6,7 @@ const Question = require('../src/models/Question');
 const Submission = require('../src/models/Submission');
 const { getIsConnected, inMemoryStore, saveLocalUsersBackup, connectDB } = require('../src/config/db');
 
-// Essential accounts only (Clean environment, zero dummy problems/submissions)
+// Essential administrator accounts only
 const initialUsers = [
   {
     name: 'SMD Tabraiz (ADMIN)',
@@ -21,24 +21,6 @@ const initialUsers = [
     email: 'admin@platform.com',
     password: 'Shamstabraiz@7931',
     role: 'admin'
-  },
-  {
-    name: 'Student Participant',
-    teamName: 'Coders Club Team 1',
-    email: 'student@codearena.com',
-    password: 'student123',
-    role: 'student',
-    score: 100,
-    solvedCount: 1
-  },
-  {
-    name: 'Student Participant',
-    teamName: 'Coders Club Team 2',
-    email: 'student@platform.com',
-    password: 'student123',
-    role: 'student',
-    score: 0,
-    solvedCount: 0
   }
 ];
 

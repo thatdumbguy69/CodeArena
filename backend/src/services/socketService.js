@@ -103,12 +103,14 @@ const init = (httpServer) => {
     socket.on('admin:timer_sync', (data) => {
       const { contestId, remainingSecs, extraMinutes } = data || {};
       if (contestId) {
-        io.to(`contest_${contestId}`).emit('contest:timer_sync', {
+        const payload = {
           contestId,
           remainingSecs,
-          extraMinutes,
+          extraMinutes: extraMinutes || 0,
           timestamp: new Date()
-        });
+        };
+        io.to(`contest_${contestId}`).emit('contest:timer_sync', payload);
+        io.emit('contest:timer_sync', payload);
       }
     });
 
@@ -199,12 +201,14 @@ const emitToUser = (userId, event, payload) => {
 // Broadcasts contest timer sync or time extension
 const emitTimerSync = (contestId, remainingSecs, extraMinutes = 0) => {
   if (!io || !contestId) return;
-  io.to(`contest_${contestId}`).emit('contest:timer_sync', {
+  const payload = {
     contestId,
     remainingSecs,
-    extraMinutes,
+    extraMinutes: extraMinutes || 0,
     timestamp: new Date()
-  });
+  };
+  io.to(`contest_${contestId}`).emit('contest:timer_sync', payload);
+  io.emit('contest:timer_sync', payload);
 };
 
 // Broadcasts contest ended / force submit to all participants in contest
