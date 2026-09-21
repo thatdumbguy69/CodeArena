@@ -427,7 +427,16 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
     );
   });
 
-  const filteredSubmissions = (submissions || []).filter(s => {
+  // Deduplicate submissions by unique ID
+  const seenSubIds = new Set();
+  const deduplicatedContestSubmissions = (submissions || []).filter(sub => {
+    const id = String(sub._id || sub.id || '');
+    if (!id || seenSubIds.has(id)) return false;
+    seenSubIds.add(id);
+    return true;
+  });
+
+  const filteredSubmissions = deduplicatedContestSubmissions.filter(s => {
     if (submissionsFilter !== 'All') {
       if (s.verdict !== submissionsFilter) return false;
     }
@@ -436,6 +445,8 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
     return (
       (s.userName && s.userName.toLowerCase().includes(q)) ||
       (s.user?.name && s.user.name.toLowerCase().includes(q)) ||
+      (s.user?.email && s.user.email.toLowerCase().includes(q)) ||
+      (s.email && s.email.toLowerCase().includes(q)) ||
       (s.questionTitle && s.questionTitle.toLowerCase().includes(q)) ||
       (s.question?.title && s.question.title.toLowerCase().includes(q)) ||
       (s.language && s.language.toLowerCase().includes(q))
@@ -504,7 +515,7 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
         </div>
       </div>
 
-      {/* 8 Primary Tabs Navigation Bar */}
+      {/* 7 Primary Tabs Navigation Bar */}
       <div style={{
         display: 'flex',
         borderBottom: '1px solid var(--border-color)',
@@ -516,7 +527,6 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
         {[
           { id: 'overview', label: 'Overview', icon: FileText },
           { id: 'problems', label: `Problems (${(contest.problemsDetails || contest.problems || []).length})`, icon: Trophy },
-          { id: 'participants', label: `Participants (${participants.length})`, icon: Users },
           { id: 'live-control', label: 'Live Control', icon: Radio, badge: contest.status === 'Live' ? 'REC' : null },
           { id: 'proctoring', label: `Proctoring (${proctoringData.length})`, icon: ShieldAlert },
           { id: 'submissions', label: `Submissions (${submissions.length})`, icon: FileText },
@@ -618,184 +628,7 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
         </div>
       )}
 
-      {/* Tab 3: PARTICIPANTS */}
-      {activeTab === 'participants' && (
-        <div className="glass-card" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>
-                Registered Contest Participants ({filteredParticipants.length})
-              </h3>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Track student attendance, problem scores, and qualification standing.
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                <input
-                  type="text"
-                  placeholder="Search participant or team..."
-                  value={participantsSearch}
-                  onChange={e => setParticipantsSearch(e.target.value)}
-                  style={{
-                    padding: '0.4rem 0.6rem 0.4rem 2rem',
-                    fontSize: '0.85rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color)',
-                    background: '#FFF'
-                  }}
-                />
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={fetchContestData}>
-                <RefreshCw size={14} /> Refresh
-              </button>
-            </div>
-          </div>
-
-          {filteredParticipants.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-              <Users size={36} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
-              <h4 style={{ margin: 0, fontWeight: 700 }}>No participants found</h4>
-              <p style={{ fontSize: '0.85rem', margin: '0.4rem 0 0' }}>
-                {participantsSearch
-                  ? 'No participants matched your search criteria.'
-                  : 'Students who enter this contest session will automatically appear here.'}
-              </p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', background: 'var(--bg-paper)' }}>
-                    <th style={{ padding: '0.75rem 1rem' }}>Participant</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Team / Group</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Email</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Status</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Score</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Solved</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Violations</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Session Time</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredParticipants.map((part, idx) => {
-                    const isDisq = part.isDisqualified || part.status === 'Disqualified';
-                    const isFin = part.isFinished;
-                    const uId = part.userId || part._id || part.id;
-                    const blurs = part.tabBlurCount || part.blurCount || 0;
-                    const maxAllowed = part.maxAllowedBlurs || contest.maxAllowedBlurs || 3;
-                    return (
-                      <tr key={uId || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <div style={{
-                              width: '28px',
-                              height: '28px',
-                              borderRadius: '50%',
-                              background: 'var(--accent-blue)',
-                              color: '#FFF',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.75rem',
-                              fontWeight: 700
-                            }}>
-                              {(part.name || 'S').charAt(0).toUpperCase()}
-                            </div>
-                            <span>{part.name || part.userName || 'Student'}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{part.teamName || '—'}</td>
-                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>{part.email || 'N/A'}</td>
-                        <td style={{ padding: '0.75rem 1rem' }}>
-                          <span style={{
-                            padding: '0.2rem 0.55rem',
-                            borderRadius: '4px',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            background: isDisq ? '#FEE2E2' : (isFin ? '#E0E7FF' : '#DCFCE7'),
-                            color: isDisq ? '#DC2626' : (isFin ? '#4F46E5' : '#15803D')
-                          }}>
-                            {isDisq ? 'DISQUALIFIED' : (isFin ? 'FINISHED' : 'ACTIVE')}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
-                          {part.score || 0} pts
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>
-                          {part.solvedCount || 0} / {(contest.problemsDetails || contest.problems || []).length}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: blurs > 0 ? '#DC2626' : 'var(--text-ink)' }}>
-                          {blurs} / {maxAllowed}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {part.timeTakenFormatted || (part.startTime ? 'In Progress' : 'Not Started')}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setSelectedParticipant(part)}
-                              title="View Participant Incident Details"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}
-                            >
-                              <Eye size={13} /> View Details
-                            </button>
-                            {isDisq ? (
-                              <button
-                                className="btn btn-sm"
-                                onClick={() => handleQualify(uId)}
-                                title="Reinstate Candidate"
-                                style={{
-                                  background: '#DCFCE7',
-                                  color: '#15803D',
-                                  border: '1px solid #86EFAC',
-                                  fontWeight: 700,
-                                  fontSize: '0.78rem',
-                                  padding: '0.3rem 0.6rem',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem'
-                                }}
-                              >
-                                <UserCheck size={13} /> Reinstate
-                              </button>
-                            ) : (
-                              <button
-                                className="btn btn-sm"
-                                onClick={() => handleDisqualify(uId)}
-                                title="Disqualify Candidate"
-                                style={{
-                                  background: '#FEE2E2',
-                                  color: '#DC2626',
-                                  border: '1px solid #FCA5A5',
-                                  fontWeight: 700,
-                                  fontSize: '0.78rem',
-                                  padding: '0.3rem 0.6rem',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem'
-                                }}
-                              >
-                                <UserX size={13} /> Disqualify
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 4: LIVE CONTROL CENTER */}
+      {/* Tab 3: LIVE CONTROL CENTER */}
       {activeTab === 'live-control' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="glass-card" style={{ padding: '2rem', textAlign: 'center', background: 'linear-gradient(180deg, #FFFFFF 0%, var(--bg-paper) 100%)' }}>
@@ -1169,7 +1002,12 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
                           #{String(sub._id || '').substring(0, 7)}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>
-                          {sub.userName || sub.user?.name || 'Student'}
+                          <div>{sub.userName || sub.user?.name || 'Student'}</div>
+                          {(sub.user?.email || sub.email) && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                              {sub.user?.email || sub.email}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>
                           {sub.questionTitle || sub.question?.title || 'Problem'}

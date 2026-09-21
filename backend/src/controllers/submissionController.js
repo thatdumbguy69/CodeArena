@@ -438,28 +438,43 @@ const getUserSubmissions = async (req, res) => {
       }
 
       const submissions = await Submission.find(filter)
-        .select('-code -details -antiCheatLogs')
         .populate('user', 'name teamName email')
         .populate('question', 'title difficulty points')
         .sort({ createdAt: -1 })
-        .limit(100)
+        .limit(200)
         .lean();
 
       return res.json({ submissions });
     } else {
       let filterSubmissions = [...inMemoryStore.submissions];
       if (req.user.role !== 'admin') {
-        filterSubmissions = filterSubmissions.filter(s => String(s.user) === String(userId));
+        filterSubmissions = filterSubmissions.filter(s => String(s.user?._id || s.user) === String(userId));
       }
       if (questionId) {
-        filterSubmissions = filterSubmissions.filter(s => String(s.question) === String(questionId));
+        filterSubmissions = filterSubmissions.filter(s => String(s.question?._id || s.question) === String(questionId));
       }
       if (contestId) {
-        filterSubmissions = filterSubmissions.filter(s => String(s.contest) === String(contestId));
+        filterSubmissions = filterSubmissions.filter(s => String(s.contest?._id || s.contest) === String(contestId));
       }
 
-      filterSubmissions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      return res.json({ submissions: filterSubmissions.slice(0, 100) });
+      // Populate user and question if needed
+      const populated = filterSubmissions.map(s => {
+        const u = typeof s.user === 'object' && s.user !== null
+          ? s.user
+          : (inMemoryStore.users || []).find(usr => String(usr._id) === String(s.user));
+        const q = typeof s.question === 'object' && s.question !== null
+          ? s.question
+          : (inMemoryStore.questions || []).find(qst => String(qst._id) === String(s.question));
+
+        return {
+          ...s,
+          user: u ? { _id: u._id, name: u.name, teamName: u.teamName, email: u.email } : s.user,
+          question: q ? { _id: q._id, title: q.title, difficulty: q.difficulty, points: q.points } : s.question
+        };
+      });
+
+      populated.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return res.json({ submissions: populated.slice(0, 200) });
     }
   } catch (err) {
     res.status(500).json({ message: 'Error retrieving submissions' });

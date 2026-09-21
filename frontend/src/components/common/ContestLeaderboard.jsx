@@ -195,6 +195,7 @@ export const ContestLeaderboard = ({
               <th style={{ padding: '0.85rem 1.25rem', width: '70px', textAlign: 'center' }}>Rank</th>
               <th style={{ padding: '0.85rem 1.25rem' }}>Team / Group Name</th>
               <th style={{ padding: '0.85rem 1.25rem' }}>Participant Name</th>
+              <th style={{ padding: '0.85rem 1.25rem' }}>Email ID</th>
               <th style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>Score</th>
               <th style={{ padding: '0.85rem 1.25rem', textAlign: 'center' }}>Solved Count</th>
               <th className="hide-mobile" style={{ padding: '0.85rem 1.25rem' }}>Time per Problem</th>
@@ -205,14 +206,14 @@ export const ContestLeaderboard = ({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#6B7280' }}>
+                <td colSpan={9} style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#6B7280' }}>
                   <div style={{ display: 'inline-block', width: '24px', height: '24px', border: '3px solid #E5E7EB', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '0.5rem' }}></div>
                   <div>Loading leaderboard rankings...</div>
                 </td>
               </tr>
             ) : filteredData.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#6B7280' }}>
+                <td colSpan={9} style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#6B7280' }}>
                   {emptyMessage}
                 </td>
               </tr>
@@ -251,6 +252,11 @@ export const ContestLeaderboard = ({
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Email ID */}
+                      <td style={{ padding: '0.85rem 1.25rem', color: '#4B5563', fontSize: '0.82rem', fontFamily: 'IBM Plex Mono, monospace' }}>
+                        {row.email || 'N/A'}
                       </td>
 
                       {/* Score */}
@@ -322,7 +328,7 @@ export const ContestLeaderboard = ({
                     {/* Expandable Problem Breakdown Drawer */}
                     {isExpanded && (
                       <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-                        <td colSpan={8} style={{ padding: '1rem 1.5rem 1.25rem 3.5rem' }}>
+                        <td colSpan={9} style={{ padding: '1rem 1.5rem 1.25rem 3.5rem' }}>
                           <div style={{
                             background: '#FFFFFF',
                             borderRadius: '8px',

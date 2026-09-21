@@ -73,7 +73,6 @@ export const AdminSidebar = ({
     {
       title: 'People & Data',
       items: [
-        { id: 'participants', label: 'Participants', icon: Users, badge: null },
         { id: 'submissions', label: 'Submissions', icon: FileCode, badge: null },
         { id: 'results-reports', label: 'Results & Reports', icon: BarChart3, badge: null },
         { id: 'user-management', label: 'Users', icon: UserCog, badge: null }

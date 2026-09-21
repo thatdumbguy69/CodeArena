@@ -96,6 +96,11 @@ export const SubmissionInspectorModal = ({ isOpen, onClose, submission }) => {
             </div>
 
             <div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Email ID</span>
+              <strong style={{ fontSize: '0.85rem', color: 'var(--text-ink)', fontFamily: 'monospace' }}>{submission.user?.email || submission.email || 'N/A'}</strong>
+            </div>
+
+            <div>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Language</span>
               <strong style={{ fontSize: '0.9rem', color: 'var(--accent-blue)', textTransform: 'capitalize' }}>{submission.language || 'python'}</strong>
             </div>
@@ -104,7 +109,7 @@ export const SubmissionInspectorModal = ({ isOpen, onClose, submission }) => {
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Execution Time</span>
               <strong style={{ fontSize: '0.9rem', color: 'var(--text-ink)' }}>
                 <Clock size={12} style={{ marginRight: '4px' }} />
-                {submission.executionTime ? `${submission.executionTime} ms` : 'N/A'}
+                {submission.executionTime !== undefined ? `${submission.executionTime} ms` : 'N/A'}
               </strong>
             </div>
 
@@ -112,14 +117,23 @@ export const SubmissionInspectorModal = ({ isOpen, onClose, submission }) => {
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Memory Usage</span>
               <strong style={{ fontSize: '0.9rem', color: 'var(--text-ink)' }}>
                 <Database size={12} style={{ marginRight: '4px' }} />
-                {submission.memory ? `${submission.memory} KB` : 'N/A'}
+                {submission.memory || submission.memoryUsed ? `${submission.memory || submission.memoryUsed} KB` : 'N/A'}
               </strong>
             </div>
 
             <div>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Test Cases</span>
               <strong style={{ fontSize: '0.9rem', color: isAccepted ? '#15803D' : 'var(--text-ink)' }}>
-                {submission.passedTests !== undefined ? `${submission.passedTests} / ${submission.totalTests}` : '100%'}
+                {submission.testCasesPassed !== undefined
+                  ? `${submission.testCasesPassed} / ${submission.totalTestCases || 0}`
+                  : (submission.passedTests !== undefined ? `${submission.passedTests} / ${submission.totalTests || 0}` : '100%')}
+              </strong>
+            </div>
+
+            <div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Integrity Violations</span>
+              <strong style={{ fontSize: '0.9rem', color: (submission.blurCount || 0) > 0 ? '#DC2626' : '#15803D' }}>
+                {(submission.blurCount || 0) > 0 ? `⚠️ ${submission.blurCount} Blurs Recorded` : '🟢 Clean Focus'}
               </strong>
             </div>
           </div>
@@ -127,22 +141,22 @@ export const SubmissionInspectorModal = ({ isOpen, onClose, submission }) => {
           {/* Submitted Code Viewer */}
           <div style={{ marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-ink)' }}>Source Code</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-ink)' }}>Submitted Source Code</span>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                {submission.code?.length || 0} characters
+                {(submission.code || '').length} characters
               </span>
             </div>
             <div style={{
               borderRadius: '8px',
               overflow: 'hidden',
               border: '1px solid var(--border-color)',
-              height: '260px'
+              height: '280px'
             }}>
               <Editor
                 height="100%"
                 language={submission.language === 'cpp' || submission.language === 'c' ? 'cpp' : (submission.language || 'python')}
                 theme="vs"
-                value={submission.code || '// No code recorded'}
+                value={submission.code || '// No code recorded for this submission'}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
@@ -155,37 +169,68 @@ export const SubmissionInspectorModal = ({ isOpen, onClose, submission }) => {
           </div>
 
           {/* Test Results Breakdown */}
-          {submission.testResults && submission.testResults.length > 0 && (
-            <div>
+          {((submission.testResults && submission.testResults.length > 0) || (submission.details && submission.details.length > 0)) && (
+            <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-ink)', marginBottom: '0.75rem' }}>
                 Test Case Execution Breakdown
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {submission.testResults.map((tc, idx) => (
-                  <div key={idx} style={{
-                    padding: '0.75rem 1rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color)',
-                    background: tc.status === 'Passed' || tc.status === 'Accepted' ? 'rgba(34, 197, 94, 0.04)' : 'rgba(239, 68, 68, 0.04)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {tc.status === 'Passed' || tc.status === 'Accepted' ? (
-                        <Check size={16} color="#15803D" />
-                      ) : (
-                        <X size={16} color="#B91C1C" />
-                      )}
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Test Case #{idx + 1} {tc.isHidden ? '(Hidden)' : '(Sample)'}</span>
-                    </div>
-
-                    <span style={{
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      color: tc.status === 'Passed' || tc.status === 'Accepted' ? '#15803D' : '#B91C1C'
+                {(submission.testResults || submission.details || []).map((tc, idx) => {
+                  const passed = tc.status === 'Passed' || tc.status === 'Accepted';
+                  return (
+                    <div key={idx} style={{
+                      padding: '0.75rem 1rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      background: passed ? 'rgba(34, 197, 94, 0.04)' : 'rgba(239, 68, 68, 0.04)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
                     }}>
-                      {tc.status} {tc.executionTime ? `(${tc.executionTime}ms)` : ''}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {passed ? (
+                          <Check size={16} color="#15803D" />
+                        ) : (
+                          <X size={16} color="#B91C1C" />
+                        )}
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Test Case #{idx + 1} {tc.isHidden ? '(Hidden)' : '(Sample)'}</span>
+                      </div>
+
+                      <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: passed ? '#15803D' : '#B91C1C'
+                      }}>
+                        {tc.status || (passed ? 'Passed' : 'Failed')} {tc.executionTime ? `(${tc.executionTime}ms)` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Anti-Cheat & Violation Logs */}
+          {submission.antiCheatLogs && submission.antiCheatLogs.length > 0 && (
+            <div>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#DC2626', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <AlertCircle size={15} /> Integrity Violation Log ({submission.antiCheatLogs.length} Events)
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {submission.antiCheatLogs.map((log, lIdx) => (
+                  <div key={lIdx} style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '6px',
+                    border: '1px solid #FECACA',
+                    background: '#FEF2F2',
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ fontWeight: 600, color: '#991B1B' }}>⚠️ {log.event || `Violation event`}</span>
+                    <span style={{ color: '#7F1D1D', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                      {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''}
                     </span>
                   </div>
                 ))}
