@@ -4,7 +4,7 @@ export const exportToExcel = (rankingsData, title = 'Leaderboard') => {
     return;
   }
 
-  const headers = ['Rank', 'Team / Group Name', 'Participant Name', 'Total Score', 'Problems Solved', 'Time per Problem', 'Total Time Taken', 'Status'];
+  const headers = ['Rank', 'Team / Group Name', 'Participant Name', 'Email ID', 'Total Score', 'Problems Solved', 'Time per Problem', 'Total Time Taken', 'Status'];
   const rows = rankingsData.map((r, idx) => {
     let probTimesStr = r.problemTimesFormatted || r.timeTakenFormatted || 'N/A';
     if (r.problemTimes && Array.isArray(r.problemTimes) && r.problemTimes.length > 0) {
@@ -15,6 +15,7 @@ export const exportToExcel = (rankingsData, title = 'Leaderboard') => {
       r.rank || idx + 1,
       `"${(r.teamName || r.name || r.userName || 'Team').replace(/"/g, '""')}"`,
       `"${(r.name || r.userName || 'Student').replace(/"/g, '""')}"`,
+      `"${(r.email || 'N/A').replace(/"/g, '""')}"`,
       r.isDisqualified ? 0 : (r.score !== undefined ? r.score : (r.points !== undefined ? r.points : 0)),
       r.solvedCount !== undefined ? r.solvedCount : (r.solvedQuestionsCount !== undefined ? r.solvedQuestionsCount : 0),
       `"${probTimesStr.replace(/"/g, '""')}"`,
@@ -56,6 +57,7 @@ export const exportToPDF = (rankingsData, title = 'Leaderboard') => {
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; text-align: center; font-weight: bold; font-family: monospace;">#${r.rank || idx + 1}</td>
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; font-weight: 700;">${r.teamName || r.name || r.userName || 'Team'}</td>
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; font-weight: 600;">${r.name || r.userName || 'Student'}</td>
+      <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; font-family: monospace; font-size: 11px; color: #555;">${r.email || 'N/A'}</td>
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; text-align: right; font-weight: bold; color: #2E5EFF; font-family: monospace;">${r.isDisqualified ? 0 : (r.score !== undefined ? r.score : (r.points || 0))} pts</td>
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; text-align: center; font-weight: 600;">${r.solvedCount !== undefined ? r.solvedCount : (r.solvedQuestionsCount || 0)}</td>
       <td style="padding: 9px 8px; border-bottom: 1px solid #e5e4e0; font-size: 11px;">${probTimesStr}</td>
@@ -100,6 +102,7 @@ export const exportToPDF = (rankingsData, title = 'Leaderboard') => {
               <th style="width: 50px; text-align: center;">Rank</th>
               <th>Team / Group Name</th>
               <th>Participant Name</th>
+              <th>Email ID</th>
               <th style="text-align: right;">Total Score</th>
               <th style="text-align: center;">Solved</th>
               <th>Time per Problem</th>

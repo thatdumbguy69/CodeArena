@@ -802,15 +802,9 @@ export const AdminPortal = ({
               {activeSection === 'submissions' && (
                 <SubmissionsSection
                   submissions={submissions}
+                  contests={contests}
                   onDeleteAllSubmissions={handleDeleteAllSubmissions}
                   onDeleteSubmission={handleDeleteSubmission}
-                />
-              )}
-
-              {activeSection === 'participants' && (
-                <ParticipantsSection
-                  usersList={usersList}
-                  contests={contests}
                 />
               )}
 
