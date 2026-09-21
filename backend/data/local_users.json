@@ -556,47 +556,47 @@
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "tabraizsmd@gmail.com",
-    "password": "$2a$10$EvQU4pHpljY3f9OUjzK9LOMkV2S67ZFwtrbyzK9nFX4GYxkSa/TmS",
+    "password": "$2a$10$pWSutlAfHXhrah41eBKY7.lougQWL9VCnTQcNZxQN.KjsuaiDDUGO",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-20T19:08:42.972Z",
-    "lastLogin": "2026-09-20T19:08:42.972Z"
+    "createdAt": "2026-09-21T09:58:05.794Z",
+    "lastLogin": "2026-09-21T09:58:05.794Z"
   },
   {
     "_id": "admin_user_1",
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "admin@platform.com",
-    "password": "$2a$10$HmoOYo.BjDULx0VTjaVJee04H00eGfOfREEoFUQv63/hZ5Z1g7EJ6",
+    "password": "$2a$10$GC7M.3iiJByzCGF87DQIn.lgsRCv8cGC5OnXxvEc5dIteRLv8r7mu",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-20T19:08:43.079Z",
-    "lastLogin": "2026-09-20T19:08:43.079Z"
+    "createdAt": "2026-09-21T09:58:06.198Z",
+    "lastLogin": "2026-09-21T09:58:06.198Z"
   },
   {
     "_id": "student_user_2",
     "name": "Student Participant",
     "teamName": "Coders Club Team 1",
     "email": "student@codearena.com",
-    "password": "$2a$10$mHq1/TsVQtqNwbP6Pr359uTBJX5YfU2mvVgggYPTMo7cE4HE5fDVe",
+    "password": "$2a$10$U7Bp5L5vE.ZUOu5UY6E5Yeg9kH5SQx.vn0WM6thQi9Sh25VSDgWEe",
     "role": "student",
     "score": 100,
     "solvedCount": 1,
-    "createdAt": "2026-09-20T19:08:43.188Z",
-    "lastLogin": "2026-09-20T19:08:43.188Z"
+    "createdAt": "2026-09-21T09:58:06.473Z",
+    "lastLogin": "2026-09-21T09:58:06.473Z"
   },
   {
     "_id": "student_user_3",
     "name": "Student Participant",
     "teamName": "Coders Club Team 2",
     "email": "student@platform.com",
-    "password": "$2a$10$3QUAbvl.pmRgqGpczm6c2u.z6pPv5nUI4gWduKuEa5KL/b1tY/zyW",
+    "password": "$2a$10$.r6gYuDz4ysxnjq/XoZYPeaPcGmCmZphHXL1UAK7cxFm78Bi.9na2",
     "role": "student",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-20T19:08:43.300Z",
-    "lastLogin": "2026-09-20T19:08:43.300Z"
+    "createdAt": "2026-09-21T09:58:06.779Z",
+    "lastLogin": "2026-09-21T09:58:06.779Z"
   }
 ]
