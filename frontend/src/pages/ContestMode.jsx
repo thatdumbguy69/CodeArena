@@ -46,6 +46,8 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const [isConsoleExpanded, setIsConsoleExpanded] = useState(false);
 
   // Anti-cheat state with session persistence
+  const editorRef = useRef(null);
+  const contestClipboardRef = useRef('');
   const [blurCount, setBlurCount] = useState(() => {
     try {
       const saved = sessionStorage.getItem(`codearena_contest_blurs_${contest?._id || contest?.slug || contest?.id || 'default_contest'}_${user?._id || user?.id || 'student'}`);
@@ -80,7 +82,6 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const languageRef = useRef(language);
   const blurCountRef = useRef(blurCount);
   const lastViolationTimeRef = useRef(0);
-  const editorRef = useRef(null);
 
   useEffect(() => { codesRef.current = codes; }, [codes]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
@@ -457,22 +458,50 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       return false;
     };
 
-    // 2. Copy, Cut & Paste Prevention (blocks clipboard access & Windows+V)
+    // 2. Isolated Internal Contest Copy / Cut / Paste (Smart Interviews style)
     const handleCopy = (e) => {
+      let selectedText = '';
+      if (editorRef.current) {
+        const sel = editorRef.current.getSelection();
+        if (sel && !sel.isEmpty()) {
+          selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
+        }
+      }
+      if (!selectedText) {
+        selectedText = window.getSelection()?.toString() || '';
+      }
+      if (selectedText) {
+        contestClipboardRef.current = selectedText;
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', selectedText);
+        }
+      }
       e.preventDefault();
       e.stopPropagation();
-      if (e.clipboardData) e.clipboardData.clearData();
-      setSecurityAlert('⚠️ Copying is disabled in secure contest mode.');
-      setTimeout(() => setSecurityAlert(null), 3000);
       return false;
     };
 
     const handleCut = (e) => {
+      if (editorRef.current) {
+        const sel = editorRef.current.getSelection();
+        if (sel && !sel.isEmpty()) {
+          const selectedText = editorRef.current.getModel()?.getValueInRange(sel) || '';
+          if (selectedText) {
+            contestClipboardRef.current = selectedText;
+            editorRef.current.executeEdits('contest-cut', [{
+              range: sel,
+              text: '',
+              forceMoveMarkers: true
+            }]);
+            editorRef.current.pushUndoStop();
+            if (e.clipboardData) {
+              e.clipboardData.setData('text/plain', selectedText);
+            }
+          }
+        }
+      }
       e.preventDefault();
       e.stopPropagation();
-      if (e.clipboardData) e.clipboardData.clearData();
-      setSecurityAlert('⚠️ Cutting is disabled in secure contest mode.');
-      setTimeout(() => setSecurityAlert(null), 3000);
       return false;
     };
 
@@ -480,13 +509,26 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      if (e.clipboardData) e.clipboardData.clearData();
-      setSecurityAlert('⚠️ Pasting & Clipboard access is strictly disabled in contest mode.');
-      setTimeout(() => setSecurityAlert(null), 3000);
+      if (!contestClipboardRef.current) {
+        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
+        setTimeout(() => setSecurityAlert(null), 3500);
+        return false;
+      }
+      if (editorRef.current) {
+        const sel = editorRef.current.getSelection();
+        if (sel) {
+          editorRef.current.executeEdits('contest-paste', [{
+            range: sel,
+            text: contestClipboardRef.current,
+            forceMoveMarkers: true
+          }]);
+          editorRef.current.pushUndoStop();
+        }
+      }
       return false;
     };
 
-    // 3. Prevent Refresh & Clipboard Keyboard Shortcuts (F5, Ctrl+R, Ctrl+C, Ctrl+V, Ctrl+X, Shift+Insert, Ctrl+Insert)
+    // 3. Prevent Refresh & Route Keyboard Shortcuts (Ctrl+V, Ctrl+C, Ctrl+X, Shift+Insert, F5, Ctrl+R)
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
@@ -500,15 +542,26 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
         return false;
       }
 
-      // Clipboard blocking
-      if (
-        (isCtrlOrCmd && ['c', 'v', 'x', 'insert'].includes(key)) ||
-        (e.shiftKey && key === 'insert')
-      ) {
+      // Intercept Paste shortcut (Ctrl+V / Shift+Insert) to only use internal contest clipboard
+      if ((isCtrlOrCmd && key === 'v') || (e.shiftKey && key === 'insert')) {
         e.preventDefault();
         e.stopPropagation();
-        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
-        setTimeout(() => setSecurityAlert(null), 3000);
+        if (!contestClipboardRef.current) {
+          setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
+          setTimeout(() => setSecurityAlert(null), 3500);
+          return false;
+        }
+        if (editorRef.current) {
+          const sel = editorRef.current.getSelection();
+          if (sel) {
+            editorRef.current.executeEdits('contest-paste', [{
+              range: sel,
+              text: contestClipboardRef.current,
+              forceMoveMarkers: true
+            }]);
+            editorRef.current.pushUndoStop();
+          }
+        }
         return false;
       }
     };
@@ -685,18 +738,61 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
 
-    // Disable copy, cut, paste, clipboard history keys inside Monaco
+    const copyInternal = () => {
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) return;
+      const selectedText = editor.getModel()?.getValueInRange(selection);
+      if (selectedText) {
+        contestClipboardRef.current = selectedText;
+        try {
+          navigator.clipboard.writeText(selectedText).catch(() => {});
+        } catch (e) {}
+      }
+    };
+
+    const cutInternal = () => {
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) return;
+      const selectedText = editor.getModel()?.getValueInRange(selection);
+      if (selectedText) {
+        contestClipboardRef.current = selectedText;
+        editor.executeEdits('contest-cut', [{
+          range: selection,
+          text: '',
+          forceMoveMarkers: true
+        }]);
+        editor.pushUndoStop();
+        try {
+          navigator.clipboard.writeText(selectedText).catch(() => {});
+        } catch (e) {}
+      }
+    };
+
+    const pasteInternal = () => {
+      if (!contestClipboardRef.current) {
+        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
+        setTimeout(() => setSecurityAlert(null), 3500);
+        return;
+      }
+      const selection = editor.getSelection();
+      if (selection) {
+        editor.executeEdits('contest-paste', [{
+          range: selection,
+          text: contestClipboardRef.current,
+          forceMoveMarkers: true
+        }]);
+        editor.pushUndoStop();
+      }
+    };
+
+    // Override Monaco's internal copy, cut, paste commands to enforce isolated contest clipboard
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, copyInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, cutInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteInternal);
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, pasteInternal);
+
     editor.onKeyDown((e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-      if (
-        (isCtrlOrCmd && (e.keyCode === monaco.KeyCode.KeyV || e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyX || e.keyCode === monaco.KeyCode.Insert)) ||
-        (e.shiftKey && e.keyCode === monaco.KeyCode.Insert)
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        setSecurityAlert('⚠️ Clipboard shortcuts (Copy/Paste) are disabled in contest mode.');
-        setTimeout(() => setSecurityAlert(null), 3000);
-      }
       if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
         e.preventDefault();
         e.stopPropagation();
@@ -707,16 +803,37 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
     const domNode = editor.getDomNode();
     if (domNode) {
-      const blockEvt = (e) => {
+      domNode.addEventListener('copy', (e) => {
+        copyInternal();
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('cut', (e) => {
+        cutInternal();
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('paste', (e) => {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        if (e.clipboardData) e.clipboardData.clearData();
-      };
-      domNode.addEventListener('paste', blockEvt, true);
-      domNode.addEventListener('copy', blockEvt, true);
-      domNode.addEventListener('cut', blockEvt, true);
-      domNode.addEventListener('contextmenu', blockEvt, true);
+        pasteInternal();
+      }, true);
+
+      domNode.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }, true);
     }
   };
 
