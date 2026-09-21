@@ -5,8 +5,17 @@ import api from '../../../services/api';
 
 
 export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSuccess }) => {
-  const [activeSection, setActiveSection] = useState(1); // 1 to 5
+  const [activeSection, setActiveSection] = useState(1); // 1 to 6
+  const [activeBoilerLang, setActiveBoilerLang] = useState('python');
   const testCasesEndRef = useRef(null);
+
+  const defaultStarterCode = {
+    python: '# Write solution here\nimport sys\n\ndef solve():\n    pass\n\nif __name__ == "__main__":\n    solve()\n',
+    cpp: '#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    // Fast I/O\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    \n    // Write solution here\n    return 0;\n}\n',
+    c: '#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    // Write solution here\n    return 0;\n}\n',
+    java: 'import java.util.*;\nimport java.io.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Write solution here\n    }\n}\n',
+    javascript: 'const fs = require("fs");\n\nfunction solve() {\n    const input = fs.readFileSync(0, "utf-8").trim();\n    // Write solution here\n}\n\nsolve();\n'
+  };
 
   const [formData, setFormData] = useState({
     title: '',
@@ -25,13 +34,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
     testCases: [
       { input: '2 7 11 15\n9', expectedOutput: '0 1', isHidden: false, explanation: 'Because 2 + 7 = 9, indices are 0 and 1.', marks: 10 }
     ],
-    starterCode: {
-      python: '# Write solution here\n',
-      cpp: '#include <iostream>\nusing namespace std;\nint main() { return 0; }\n',
-      c: '#include <stdio.h>\nint main() { return 0; }\n',
-      java: 'public class Solution { public static void main(String[] args) {} }\n',
-      javascript: '// Write solution here\n'
-    },
+    starterCode: { ...defaultStarterCode },
     referenceSolution: {
       python: '',
       cpp: '',
@@ -153,6 +156,11 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
           const refLang = fullProb.referenceLanguage || (fullProb.referenceSolution ? Object.keys(fullProb.referenceSolution)[0] : 'python') || 'python';
           const refCode = fullProb.referenceCode || (fullProb.referenceSolution ? fullProb.referenceSolution[refLang] : '') || '';
 
+          const mergedStarterCode = {
+            ...defaultStarterCode,
+            ...(fullProb.starterCode || {})
+          };
+
           setFormData({
             title: fullProb.title || '',
             slug: fullProb.slug || '',
@@ -171,6 +179,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             testCases: fullProb.testCases && fullProb.testCases.length > 0 ? fullProb.testCases : [
               { input: '', expectedOutput: '', isHidden: false, explanation: '', marks: 10 }
             ],
+            starterCode: mergedStarterCode,
             referenceCode: refCode,
             referenceLanguage: refLang
           });
@@ -197,6 +206,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
         testCases: [
           { input: '', expectedOutput: '', isHidden: false, explanation: '', marks: 10 }
         ],
+        starterCode: { ...defaultStarterCode },
         referenceCode: '',
         referenceLanguage: 'python'
       });
@@ -255,6 +265,16 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
     });
   };
 
+  const handleStarterCodeChange = (lang, codeValue) => {
+    setFormData(prev => ({
+      ...prev,
+      starterCode: {
+        ...(prev.starterCode || {}),
+        [lang]: codeValue
+      }
+    }));
+  };
+
   const handleToggleLanguage = (lang) => {
     setFormData(prev => {
       const exists = prev.allowedLanguages.includes(lang);
@@ -304,6 +324,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
         ...formData,
         tags: typeof formData.tags === 'string' ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : formData.tags,
         referenceSolution: formData.referenceCode ? { [formData.referenceLanguage]: formData.referenceCode } : {},
+        starterCode: formData.starterCode || {},
         skipValidation: true
       };
 
@@ -364,7 +385,7 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
               {problemToEdit ? 'Edit Problem' : 'Create New Problem'}
             </h3>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              6-Section Authoring Suite & Live Preview
+              6-Section Authoring Suite with Custom Boilerplate &amp; Live Preview
             </span>
           </div>
 
@@ -388,8 +409,9 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             { id: 1, label: '1. Basic Info', icon: FileText },
             { id: 2, label: '2. Statement', icon: Code },
             { id: 3, label: '3. Settings', icon: Settings },
-            { id: 4, label: '4. Test Cases', icon: Database },
-            { id: 5, label: '5. Problem Preview', icon: Eye }
+            { id: 4, label: '4. Starter Code', icon: Code },
+            { id: 5, label: '5. Test Cases', icon: Database },
+            { id: 6, label: '6. Problem Preview', icon: Eye }
           ].map(sec => {
 
             const Icon = sec.icon;
@@ -656,8 +678,132 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             </div>
           )}
 
-          {/* SECTION 4: TEST CASES */}
+          {/* SECTION 4: CUSTOM STARTER CODE BOILERPLATE */}
           {activeSection === 4 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{
+                padding: '0.85rem 1.15rem',
+                background: 'rgba(79, 70, 229, 0.06)',
+                borderRadius: '8px',
+                border: '1px solid #C7D2FE',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem'
+              }}>
+                <Code size={20} color="#4F46E5" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#312E81' }}>
+                    Custom Starter / Boilerplate Code Templates
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#4338CA' }}>
+                    Pre-populate function signatures, I/O handling, or template wrappers shown to candidates when they select a language in the IDE.
+                  </span>
+                </div>
+              </div>
+
+              {/* Language Selector Bar */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                  Select Language Template to Customize:
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'python', name: 'Python 3', monacoLang: 'python' },
+                    { id: 'cpp', name: 'C++17', monacoLang: 'cpp' },
+                    { id: 'c', name: 'C (GCC)', monacoLang: 'c' },
+                    { id: 'java', name: 'Java 17', monacoLang: 'java' },
+                    { id: 'javascript', name: 'JavaScript Node.js', monacoLang: 'javascript' }
+                  ].map(lang => {
+                    const isAllowed = formData.allowedLanguages.includes(lang.id);
+                    const isActive = activeBoilerLang === lang.id;
+                    return (
+                      <button
+                        key={lang.id}
+                        type="button"
+                        onClick={() => setActiveBoilerLang(lang.id)}
+                        className="btn btn-sm"
+                        style={{
+                          background: isActive ? 'var(--accent-blue)' : '#FFFFFF',
+                          color: isActive ? '#FFFFFF' : 'var(--text-ink)',
+                          border: isActive ? '1.5px solid var(--accent-blue)' : '1px solid var(--border-color)',
+                          fontWeight: isActive ? 700 : 500,
+                          fontSize: '0.82rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '0.45rem 0.9rem'
+                        }}
+                      >
+                        <Code size={13} />
+                        {lang.name}
+                        {!isAllowed && (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            background: isActive ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
+                            color: isActive ? '#FFF' : '#64748B',
+                            borderRadius: '4px',
+                            padding: '0.1rem 0.35rem',
+                            marginLeft: '4px'
+                          }}>
+                            (Disabled in Settings)
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Quick Template Reset Actions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-slate)' }}>
+                  Editing Starter Code for <strong>{activeBoilerLang.toUpperCase()}</strong>:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Reset ${activeBoilerLang} starter template to standard default?`)) {
+                      handleStarterCodeChange(activeBoilerLang, defaultStarterCode[activeBoilerLang] || '');
+                    }
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                >
+                  Reset to Default Template
+                </button>
+              </div>
+
+              {/* Monaco Code Editor */}
+              <div style={{
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.03)'
+              }}>
+                <Editor
+                  height="340px"
+                  language={activeBoilerLang === 'cpp' ? 'cpp' : activeBoilerLang === 'c' ? 'c' : activeBoilerLang}
+                  value={formData.starterCode?.[activeBoilerLang] || ''}
+                  onChange={(val) => handleStarterCodeChange(activeBoilerLang, val || '')}
+                  theme="vs-dark"
+                  options={{
+                    fontSize: 13,
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 4,
+                    lineNumbers: 'on',
+                    folding: true,
+                    wordWrap: 'on'
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 5: TEST CASES */}
+          {activeSection === 5 && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>Test Case Inventory</h4>
@@ -797,8 +943,8 @@ export const ProblemEditorModal = ({ isOpen, onClose, problemToEdit, onSaveSucce
             </div>
           )}
 
-          {/* SECTION 5: PROBLEM PREVIEW */}
-          {activeSection === 5 && (
+          {/* SECTION 6: PROBLEM PREVIEW */}
+          {activeSection === 6 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{
                 padding: '0.85rem 1.15rem',

@@ -10,7 +10,6 @@ const crypto = require('crypto');
 if (process.platform === 'win32') {
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
   const possiblePaths = [
-    'C:\\mingw64\\bin',
     path.join(localAppData, 'Microsoft', 'WinGet', 'Links'),
     path.join(localAppData, 'Microsoft', 'WinGet', 'Packages', 'BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe', 'mingw64', 'bin'),
     'C:\\MinGW\\bin',
