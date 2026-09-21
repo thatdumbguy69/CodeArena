@@ -1,0 +1,21 @@
+config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 60
+      arrivalRate: 5      # Generates 5 new virtual users per second
+      rampTo: 30          # Ramps up to 30 concurrent users
+      name: "Simulating 30 Lab Contestants"
+
+scenarios:
+  - name: "Contest Workflow"
+    flow:
+      - get:
+          url: "/api/contests"
+      - get:
+          url: "/api/leaderboard/rankings?contestId=global"
+      - post:
+          url: "/api/submissions/run"
+          json:
+            language: "python"
+            code: "print('Hello Test')"
+            customInput: "1 2 3"

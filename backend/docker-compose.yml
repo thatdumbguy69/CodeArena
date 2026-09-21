@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: codearena-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: codearena-mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  api-server:
+    build: .
+    container_name: codearena-api
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/codearena
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=super_secret_codearena_jwt_key_2026
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+
+  # Scalable Multi-Judge Worker Fleet (Scale horizontally: docker compose up --scale judge-worker=4)
+  judge-worker:
+    build: .
+    command: ["node", "src/workers/judgeWorker.js"]
+    restart: always
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/codearena
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_CONCURRENCY=15
+    deploy:
+      replicas: 2
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  mongo-data:

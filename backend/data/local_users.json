@@ -1,0 +1,50 @@
+[
+  {
+    "_id": "student_user_2",
+    "name": "Student Participant",
+    "teamName": "Coders Club Team 1",
+    "email": "student@codearena.com",
+    "password": "$2a$10$JQ9BTofnz1s1RjkQzCl0KuMwzYnDT0Wcv8cPHLfDbNNdE2lDaqK7u",
+    "role": "student",
+    "score": 100,
+    "solvedCount": 1,
+    "createdAt": "2026-09-21T04:56:53.880Z",
+    "lastLogin": "2026-09-21T04:56:53.880Z"
+  },
+  {
+    "_id": "student_user_3",
+    "name": "Student Participant",
+    "teamName": "Coders Club Team 2",
+    "email": "student@platform.com",
+    "password": "$2a$10$.WbSMB3ldBXtY5qPDPtsN.ZaW7MeLw4JOXtv8EFeTfJfrQe7ttWWC",
+    "role": "student",
+    "score": 0,
+    "solvedCount": 0,
+    "createdAt": "2026-09-21T04:56:53.943Z",
+    "lastLogin": "2026-09-21T04:56:53.943Z"
+  },
+  {
+    "_id": "admin_user_0",
+    "name": "SMD Tabraiz (ADMIN)",
+    "teamName": "Administration",
+    "email": "tabraizsmd@gmail.com",
+    "password": "$2a$10$9iowDaYoCQqn42tyVhis4Ou2u6flCEZ5BKIA83YZzfCROSqzBtcYe",
+    "role": "admin",
+    "score": 0,
+    "solvedCount": 0,
+    "createdAt": "2026-09-21T04:56:53.758Z",
+    "lastLogin": "2026-09-21T04:56:53.758Z"
+  },
+  {
+    "_id": "admin_user_1",
+    "name": "SMD Tabraiz (ADMIN)",
+    "teamName": "Administration",
+    "email": "admin@platform.com",
+    "password": "$2a$10$jpbVfrHisJahwalA.AjfBOGXN/Pfs5ZgA.rkCuEtG.gZ9syWrow4m",
+    "role": "admin",
+    "score": 0,
+    "solvedCount": 0,
+    "createdAt": "2026-09-21T04:56:53.818Z",
+    "lastLogin": "2026-09-21T04:56:53.818Z"
+  }
+]
