@@ -61,6 +61,33 @@ export const StudentProblemWorkspace = ({
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [practiceProblemsList, setPracticeProblemsList] = useState(allProblems || []);
+  const [currentContestData, setCurrentContestData] = useState(contest);
+
+  useEffect(() => {
+    if (contest) {
+      setCurrentContestData(prev => {
+        if (contest.problems && contest.problems.length > 0) {
+          return { ...prev, ...contest };
+        }
+        return { ...contest, problems: (prev?.problems && prev.problems.length > 0) ? prev.problems : contest.problems };
+      });
+    }
+  }, [contest]);
+
+  // Suppress Chromium Fullscreen top hover exit UI pill
+  useEffect(() => {
+    if (!contestMode) return;
+    const preventTopPill = (e) => {
+      if (e.clientY <= 4) {
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('mousemove', preventTopPill, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('mousemove', preventTopPill, { capture: true });
+    };
+  }, [contestMode]);
+
   const [contestTimeLeft, setContestTimeLeft] = useState(() => {
     if (contest?.endTime) {
       return Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000));
@@ -71,12 +98,12 @@ export const StudentProblemWorkspace = ({
   // Countdown timer until contest begins
   const [contestStartsIn, setContestStartsIn] = useState(() => {
     if (!contestMode || !contest) return 0;
-    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
-      return Math.max(0, contest.startsInSecs);
-    }
     if (contest.startTime) {
       const diff = Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000);
       return Math.max(0, diff);
+    }
+    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
+      return Math.max(0, contest.startsInSecs);
     }
     return 0;
   });
@@ -924,6 +951,7 @@ export const StudentProblemWorkspace = ({
         if (res.data?.contest) {
           const freshContest = res.data.contest;
           contestRef.current = freshContest;
+          setCurrentContestData(freshContest);
           if (freshContest.endTime) {
             contestEndTimeRef.current = new Date(freshContest.endTime);
             const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
@@ -934,20 +962,29 @@ export const StudentProblemWorkspace = ({
             const first = freshProblems[0];
             const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
             await fetchProblemDetails(firstSlug);
+          } else {
+            await fetchProblemDetails();
           }
         }
       } catch (err) {
         console.error('Error unlocking contest questions:', err);
+        await fetchProblemDetails();
       }
+    } else {
+      await fetchProblemDetails();
     }
     armProctoring();
   };
 
   useEffect(() => {
     if (contestMode && contest) {
+      // Set or preserve monotonic end timestamp without resetting on prop re-renders
       if (contest.endTime) {
-        contestEndTimeRef.current = new Date(contest.endTime);
-      } else if (contest.remainingSecs) {
+        const parsedEnd = new Date(contest.endTime);
+        if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - parsedEnd.getTime()) > 5000) {
+          contestEndTimeRef.current = parsedEnd;
+        }
+      } else if (contest.remainingSecs && !contestEndTimeRef.current) {
         contestEndTimeRef.current = new Date(Date.now() + contest.remainingSecs * 1000);
       }
 
@@ -956,35 +993,28 @@ export const StudentProblemWorkspace = ({
           const diff = Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000);
           return Math.max(0, diff);
         }
-        if (contest.endTime) {
-          const diff = Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000);
-          return Math.max(0, diff);
-        }
         return Math.max(0, contest.remainingSecs || 0);
       };
 
       setContestTimeLeft(getLeftSecs());
 
       const timer = setInterval(() => {
-        setContestTimeLeft(prev => {
-          const nowMs = Date.now();
-          const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
-          if (startMs > nowMs || contestStartsInRef.current > 0) {
-            // Contest has not started yet; do not decrement remaining or auto-submit
-            return prev;
-          }
+        const nowMs = Date.now();
+        const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
+        if (startMs > nowMs || contestStartsInRef.current > 0) {
+          return;
+        }
 
-          const actualLeft = contestEndTimeRef.current
-            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
-            : Math.max(0, prev - 1);
+        const actualLeft = contestEndTimeRef.current
+          ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
+          : Math.max(0, contestTimeLeft - 1);
 
-          if (actualLeft <= 0) {
-            clearInterval(timer);
-            handleAutoSubmitContest();
-            return 0;
-          }
-          return actualLeft;
-        });
+        setContestTimeLeft(actualLeft);
+
+        if (actualLeft <= 0) {
+          clearInterval(timer);
+          handleAutoSubmitContest();
+        }
       }, 1000);
 
       const getStartsIn = () => {
@@ -998,20 +1028,18 @@ export const StudentProblemWorkspace = ({
       setContestStartsIn(getStartsIn());
 
       const startTimer = setInterval(() => {
-        setContestStartsIn(prev => {
-          const actualStartsIn = contest.startTime
-            ? Math.max(0, Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000))
-            : Math.max(0, prev - 1);
+        const nowMs = Date.now();
+        const actualStartsIn = contestRef.current?.startTime
+          ? Math.max(0, Math.floor((new Date(contestRef.current.startTime).getTime() - nowMs) / 1000))
+          : Math.max(0, contestStartsInRef.current - 1);
 
-          if (actualStartsIn <= 0) {
-            clearInterval(startTimer);
-            if (prev > 0) {
-              handleContestStarted();
-            }
-            return 0;
-          }
-          return actualStartsIn;
-        });
+        setContestStartsIn(actualStartsIn);
+        contestStartsInRef.current = actualStartsIn;
+
+        if (actualStartsIn <= 0) {
+          clearInterval(startTimer);
+          handleContestStarted();
+        }
       }, 1000);
 
       const statusPollTimer = setInterval(async () => {
@@ -1038,7 +1066,13 @@ export const StudentProblemWorkspace = ({
                 if (contestStartsInRef.current > 0) {
                   handleContestStarted();
                 } else if (currentC.endTime) {
-                  contestEndTimeRef.current = new Date(currentC.endTime);
+                  const newEnd = new Date(currentC.endTime);
+                  if (Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
+                    contestEndTimeRef.current = newEnd;
+                  }
+                }
+                if (currentC.problems && currentC.problems.length > 0) {
+                  setCurrentContestData(prev => ({ ...prev, ...currentC }));
                 }
               }
             }
@@ -1059,10 +1093,17 @@ export const StudentProblemWorkspace = ({
     if (typeof slugStr === 'object' && slugStr !== null) {
       slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
     }
-    if (!slugStr && contestMode && contest?.problems && contest.problems.length > 0) {
-      const first = contest.problems[0];
-      slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+
+    if (slugStr === 'contest-lobby' || !slugStr) {
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
+      if (contestProblems && contestProblems.length > 0) {
+        const first = contestProblems[0];
+        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+      }
     }
+
     if (!slugStr) return;
 
     try {
@@ -1071,29 +1112,36 @@ export const StudentProblemWorkspace = ({
 
       let data = null;
 
-      if (contestMode && contest?.problems) {
-        const matchingContestProb = contest.problems.find(p => {
-          if (!p || typeof p !== 'object') return false;
-          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr);
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems || []);
+
+      if (contestProblems.length > 0) {
+        const matchingContestProb = contestProblems.find(p => {
+          if (!p) return false;
+          if (typeof p === 'string') return p === slugStr;
+          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
         });
-        if (matchingContestProb && (matchingContestProb.sampleTestCases || matchingContestProb.testCases || matchingContestProb.description)) {
+        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
           data = matchingContestProb;
         }
       }
 
-      try {
-        const res = await api.get(`/questions/${slugStr}`);
-        if (res.data?.question || res.data) {
-          data = res.data.question || res.data;
-        }
-      } catch (e) {
-        console.warn('Direct problem fetch fallback:', e);
-        if (!data) {
-          const listRes = await api.get('/questions').catch(() => null);
-          const questionsList = listRes?.data?.questions || [];
-          if (questionsList.length > 0) {
-            data = questionsList[0];
+      if (!data && slugStr && slugStr !== 'contest-lobby') {
+        try {
+          const res = await api.get(`/questions/${slugStr}`);
+          if (res.data?.question || res.data) {
+            data = res.data.question || res.data;
           }
+        } catch (e) {
+          console.warn('Direct problem fetch fallback:', e);
+        }
+      }
+
+      if (!data) {
+        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
+        if (pool.length > 0) {
+          data = pool.find(q => q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr)) || pool[0];
         }
       }
 
@@ -1269,6 +1317,8 @@ export const StudentProblemWorkspace = ({
         fontFamily: 'IBM Plex Sans, sans-serif',
         overflowY: 'auto'
       }}>
+        {/* Top hover barrier to prevent browser exit overlay */}
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{
             display: 'inline-flex',
@@ -1555,9 +1605,37 @@ export const StudentProblemWorkspace = ({
     );
   }
 
-  const activeProblemsList = contestMode && contest?.problems
-    ? contest.problems
-    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
+  const activeProblemsList = React.useMemo(() => {
+    let list = [];
+    if (contestMode) {
+      const cProbs = currentContestData?.problems || contest?.problems;
+      if (Array.isArray(cProbs) && cProbs.length > 0) {
+        list = cProbs.map((p, idx) => {
+          if (typeof p === 'string') {
+            const found = (allProblems || []).concat(practiceProblemsList || []).find(
+              q => String(q._id) === p || String(q.id) === p || q.slug === p
+            );
+            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
+          } else if (p && typeof p === 'object') {
+            if (!p.title || p.title === p._id || p.title === p.slug) {
+              const pId = p._id || p.id || p.slug;
+              const found = (allProblems || []).concat(practiceProblemsList || []).find(
+                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
+              );
+              if (found) return { ...found, ...p };
+            }
+            return p;
+          }
+          return p;
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
+    }
+    return list;
+  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems]);
   
   const getProblemIdentifier = (p) => {
     if (!p) return '';
@@ -1623,6 +1701,8 @@ export const StudentProblemWorkspace = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
+      {/* Chromium Top Fullscreen Barrier to suppress browser exit pill */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
       {/* Top-Right Real-Time Contest Timer Toast Notification */}
       {timerToast && (
         <div
@@ -1752,10 +1832,10 @@ export const StudentProblemWorkspace = ({
             borderRadius: '4px',
             fontSize: '0.72rem',
             fontWeight: 700,
-            background: question.difficulty === 'Easy' ? '#DCFCE7' : (question.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'),
-            color: question.difficulty === 'Easy' ? '#15803D' : (question.difficulty === 'Medium' ? '#D97706' : '#B91C1C')
+            background: question?.difficulty === 'Easy' ? '#DCFCE7' : (question?.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'),
+            color: question?.difficulty === 'Easy' ? '#15803D' : (question?.difficulty === 'Medium' ? '#D97706' : '#B91C1C')
           }}>
-            {question.difficulty || 'Medium'}
+            {question?.difficulty || 'Medium'}
           </span>
         </div>
 
@@ -2010,34 +2090,34 @@ export const StudentProblemWorkspace = ({
           </div>
 
           <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-ink)' }}>
-            {question.title}
+            {question?.title || 'Problem'}
           </h2>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--text-slate)' }}>
-            <span>Points: <strong style={{ color: 'var(--accent-blue)' }}>{question.points || 100} pts</strong></span>
-            <span>Time Limit: <strong>{question.timeLimit || 2000}ms</strong></span>
-            <span>Memory Limit: <strong>{question.memoryLimit || 256}MB</strong></span>
+            <span>Points: <strong style={{ color: 'var(--accent-blue)' }}>{question?.points || 100} pts</strong></span>
+            <span>Time Limit: <strong>{question?.timeLimit || 2000}ms</strong></span>
+            <span>Memory Limit: <strong>{question?.memoryLimit || 256}MB</strong></span>
           </div>
 
           <div style={{ marginBottom: '1.5rem', lineHeight: 1.6, fontSize: '0.92rem', color: 'var(--text-ink)' }}>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{question.description}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{question?.description || 'Problem statement loading...'}</p>
           </div>
 
-          {question.inputFormat && (
+          {question?.inputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Input Format (STDIN)</h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.inputFormat}</p>
             </div>
           )}
 
-          {question.outputFormat && (
+          {question?.outputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Output Format (STDOUT)</h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.outputFormat}</p>
             </div>
           )}
 
-          {question.constraints && (
+          {question?.constraints && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Constraints</h4>
               <pre style={{
