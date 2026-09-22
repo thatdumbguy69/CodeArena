@@ -57,21 +57,57 @@ const bustContestsCache = () => { contestsListCache.data = null; contestsListCac
 const getAllContests = async (req, res) => {
   try {
     if (getIsConnected()) {
-      // Serve from cache when fresh
+      let computed;
       if (contestsListCache.data && Date.now() < contestsListCache.exp) {
-        return res.json({ contests: contestsListCache.data });
+        computed = contestsListCache.data.map(c => ({ ...c }));
+      } else {
+        const contests = await Contest.find()
+          .populate('problems', 'title difficulty category points slug')
+          .sort({ createdAt: -1 })
+          .lean();
+        computed = contests.map(c => computeContestRealtime(c));
+        contestsListCache.data = computed;
+        contestsListCache.exp = Date.now() + 5000; // 5s TTL
+        computed = computed.map(c => ({ ...c }));
       }
-      const contests = await Contest.find()
-        .populate('problems', 'title difficulty category points slug')
-        .sort({ createdAt: -1 })
-        .lean();
-      const computed = contests.map(c => computeContestRealtime(c));
-      contestsListCache.data = computed;
-      contestsListCache.exp = Date.now() + 5000; // 5s TTL
+
+      if (req.user && req.user.id) {
+        const mySessions = await ContestSession.find({ user: req.user.id }).lean();
+        const sessionMap = {};
+        mySessions.forEach(s => { sessionMap[String(s.contest)] = s; });
+        computed.forEach(c => {
+          const s = sessionMap[String(c._id)];
+          c.userSession = s ? {
+            isFinished: !!s.isFinished,
+            isDisqualified: !!s.isDisqualified,
+            startTime: s.startTime,
+            finishedAt: s.finishedAt,
+            blurCount: s.blurCount || 0
+          } : null;
+        });
+      }
+
       return res.json({ contests: computed });
     } else {
       const contests = inMemoryStore.contests || [];
       const computed = contests.map(c => computeContestRealtime(c));
+
+      if (req.user && req.user.id) {
+        const mySessions = (inMemoryStore.contestSessions || []).filter(s => String(s.user) === String(req.user.id));
+        const sessionMap = {};
+        mySessions.forEach(s => { sessionMap[String(s.contest)] = s; });
+        computed.forEach(c => {
+          const s = sessionMap[String(c._id)];
+          c.userSession = s ? {
+            isFinished: !!s.isFinished,
+            isDisqualified: !!s.isDisqualified,
+            startTime: s.startTime,
+            finishedAt: s.finishedAt,
+            blurCount: s.blurCount || 0
+          } : null;
+        });
+      }
+
       return res.json({ contests: computed });
     }
   } catch (err) {
@@ -184,6 +220,17 @@ const getContestByIdOrSlug = async (req, res) => {
         computed.participants = buildContestParticipants(contest, sessions, submissions);
       }
 
+      if (req.user && req.user.id) {
+        const mySession = await ContestSession.findOne({ user: req.user.id, contest: contest._id }).lean();
+        computed.userSession = mySession ? {
+          isFinished: !!mySession.isFinished,
+          isDisqualified: !!mySession.isDisqualified,
+          startTime: mySession.startTime,
+          finishedAt: mySession.finishedAt,
+          blurCount: mySession.blurCount || 0
+        } : null;
+      }
+
       return res.json({ contest: computed });
     } else {
       const list = inMemoryStore.contests || [];
@@ -205,6 +252,17 @@ const getContestByIdOrSlug = async (req, res) => {
         });
         const submissions = (inMemoryStore.submissions || []).filter(s => String(s.contest) === String(contest._id));
         computed.participants = buildContestParticipants(contest, populatedSessions, submissions);
+      }
+
+      if (req.user && req.user.id) {
+        const mySession = (inMemoryStore.contestSessions || []).find(s => String(s.user) === String(req.user.id) && String(s.contest) === String(contest._id));
+        computed.userSession = mySession ? {
+          isFinished: !!mySession.isFinished,
+          isDisqualified: !!mySession.isDisqualified,
+          startTime: mySession.startTime,
+          finishedAt: mySession.finishedAt,
+          blurCount: mySession.blurCount || 0
+        } : null;
       }
 
       return res.json({ contest: computed });
@@ -528,6 +586,13 @@ const startContestSession = async (req, res) => {
         });
       }
 
+      if (session && session.isFinished) {
+        return res.status(403).json({
+          message: 'You have already submitted this contest.',
+          isFinished: true
+        });
+      }
+
       if (!session) {
         session = await ContestSession.create({
           user: userId,
@@ -553,6 +618,13 @@ const startContestSession = async (req, res) => {
           message: 'You have been disqualified from this contest. Only an administrator can reinstate your qualification.',
           isDisqualified: true,
           disqualificationReason: session.disqualificationReason || 'Exceeded maximum allowed window focus / fullscreen violations'
+        });
+      }
+
+      if (session && session.isFinished) {
+        return res.status(403).json({
+          message: 'You have already submitted this contest.',
+          isFinished: true
         });
       }
 

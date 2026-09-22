@@ -117,12 +117,50 @@ const getLeaderboard = async (req, res) => {
         let contest;
         if (getIsConnected()) {
           contest = contestId.match(/^[0-9a-fA-F]{24}$/)
-            ? await Contest.findById(contestId)
-            : await Contest.findOne({ slug: contestId });
+            ? await Contest.findById(contestId).populate('problems')
+            : await Contest.findOne({ slug: contestId }).populate('problems');
         } else {
           contest = (inMemoryStore.contests || []).find(c => String(c._id) === String(contestId) || c.slug === String(contestId));
         }
         if (!contest) return { error: 404, message: 'Contest not found' };
+
+        // Build allowed problems map for this specific contest
+        const allowedProblemMap = {};
+        const contestProblemPoints = {};
+        (contest.problems || []).forEach((p, idx) => {
+          if (typeof p === 'object' && p !== null) {
+            const pTitle = p.title || `Problem ${idx + 1}`;
+            const pts = p.points || (p.difficulty === 'Medium' ? 200 : (p.difficulty === 'Hard' ? 300 : 100));
+            if (p._id) {
+              const pid = String(p._id);
+              allowedProblemMap[pid] = pTitle;
+              contestProblemPoints[pid] = pts;
+            }
+            if (p.id) {
+              const pid = String(p.id);
+              allowedProblemMap[pid] = pTitle;
+              contestProblemPoints[pid] = pts;
+            }
+            if (p.slug) {
+              allowedProblemMap[p.slug] = pTitle;
+              contestProblemPoints[p.slug] = pts;
+            }
+          } else if (p) {
+            const pid = String(p);
+            let pTitle = `Problem ${idx + 1}`;
+            let pts = 100;
+            if (!getIsConnected()) {
+              const qObj = (inMemoryStore.questions || []).find(q => String(q._id) === pid || q.slug === pid);
+              if (qObj) {
+                pTitle = qObj.title;
+                pts = qObj.points || (qObj.difficulty === 'Medium' ? 200 : (qObj.difficulty === 'Hard' ? 300 : 100));
+              }
+            }
+            allowedProblemMap[pid] = pTitle;
+            contestProblemPoints[pid] = pts;
+          }
+        });
+        const hasSpecificProblems = Object.keys(allowedProblemMap).length > 0;
 
         let contestSessions = [];
         let relevantSubmissions = [];
@@ -136,7 +174,7 @@ const getLeaderboard = async (req, res) => {
           })
             .select('user question questionTitle score verdict executionTime createdAt blurCount')
             .populate('user', 'name teamName email')
-            .populate('question', 'title')
+            .populate('question', 'title slug difficulty points')
             .sort({ createdAt: 1 })
             .lean();
         } else {
@@ -153,6 +191,28 @@ const getLeaderboard = async (req, res) => {
         });
 
         const userScores = {};
+
+        // Helper to seed problem template for a user
+        const seedUserQuestionData = (uId) => {
+          if (hasSpecificProblems) {
+            // Seed uniquely by problem id/slug from contest.problems
+            (contest.problems || []).forEach((p, idx) => {
+              const key = typeof p === 'object' && p !== null ? String(p._id || p.id || p.slug) : String(p);
+              const title = typeof p === 'object' && p !== null ? (p.title || `Problem ${idx + 1}`) : (allowedProblemMap[key] || `Problem ${idx + 1}`);
+              if (!userScores[uId].questionData[key]) {
+                userScores[uId].questionData[key] = {
+                  firstAttempt: null,
+                  bestSubTime: null,
+                  firstAcceptedTime: null,
+                  score: 0,
+                  verdict: 'Unattempted',
+                  executionTime: 0,
+                  qTitle: title
+                };
+              }
+            });
+          }
+        };
 
         // Seed all participants who have started a contest session
         for (const session of contestSessions) {
@@ -171,6 +231,7 @@ const getLeaderboard = async (req, res) => {
               sessionFinishedAt: session.finishedAt ? new Date(session.finishedAt) : null,
               questionData: {}
             };
+            seedUserQuestionData(uId);
           }
         }
 
@@ -195,23 +256,43 @@ const getLeaderboard = async (req, res) => {
               sessionFinishedAt: userSession?.finishedAt ? new Date(userSession.finishedAt) : null,
               questionData: {}
             };
+            seedUserQuestionData(uId);
           }
 
           const qId = String(sub.question?._id || sub.question);
-          let qTitle = sub.questionTitle;
-          if (!qTitle && sub.question && sub.question.title) qTitle = sub.question.title;
-          if (!qTitle && !getIsConnected()) {
-            const qObj = (inMemoryStore.questions || []).find(q => String(q._id) === qId);
-            if (qObj) qTitle = qObj.title;
+          const qSlug = sub.question?.slug;
+
+          // If this contest has a specific problem set, ignore submissions for other unrelated questions
+          if (hasSpecificProblems && !allowedProblemMap[qId] && (!qSlug || !allowedProblemMap[qSlug])) {
+            continue;
           }
-          if (!qTitle) qTitle = 'Problem';
+
+          let matchedKey = qId;
+          if (hasSpecificProblems) {
+            if (userScores[uId].questionData[qId]) {
+              matchedKey = qId;
+            } else if (qSlug && userScores[uId].questionData[qSlug]) {
+              matchedKey = qSlug;
+            } else {
+              // Find matching key in allowedProblemMap
+              const foundKey = Object.keys(userScores[uId].questionData).find(k => k === qId || k === qSlug);
+              if (foundKey) matchedKey = foundKey;
+            }
+          }
+
+          let qTitle = allowedProblemMap[qId] || (qSlug && allowedProblemMap[qSlug]) || sub.questionTitle || sub.question?.title || 'Problem';
 
           const subTime = new Date(sub.createdAt);
-          const currentScore = sub.score || 0;
+          let currentScore = sub.score || 0;
           const isAccepted = sub.verdict === 'Accepted';
 
-          if (!userScores[uId].questionData[qId]) {
-            userScores[uId].questionData[qId] = {
+          // Ensure max points align with contest problem weight if accepted
+          if (isAccepted && contestProblemPoints[matchedKey]) {
+            currentScore = Math.max(currentScore, contestProblemPoints[matchedKey]);
+          }
+
+          if (!userScores[uId].questionData[matchedKey] || userScores[uId].questionData[matchedKey].verdict === 'Unattempted') {
+            userScores[uId].questionData[matchedKey] = {
               firstAttempt: subTime,
               bestSubTime: subTime,
               firstAcceptedTime: isAccepted ? subTime : null,
@@ -221,7 +302,8 @@ const getLeaderboard = async (req, res) => {
               qTitle
             };
           } else {
-            const qData = userScores[uId].questionData[qId];
+            const qData = userScores[uId].questionData[matchedKey];
+            if (!qData.firstAttempt) qData.firstAttempt = subTime;
             if (!qData.firstAcceptedTime && isAccepted) {
               qData.firstAcceptedTime = subTime;
             }

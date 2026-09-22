@@ -143,40 +143,64 @@ export const StudentDashboardSection = ({
 
       {/* 3. Contest Section Hero Card */}
       {liveContest ? (
-        <div className="glass-card" style={{
-          padding: '1.75rem',
-          background: 'linear-gradient(135deg, #FFFFFF 0%, rgba(254, 226, 226, 0.3) 100%)',
-          borderRadius: '12px',
-          border: '1px solid rgba(239, 68, 68, 0.35)',
-          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.1)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', background: '#FEE2E2', color: '#DC2626', fontSize: '0.75rem', fontWeight: 800 }}>
-                  🔴 LIVE CONTEST IN PROGRESS
-                </span>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-slate)' }}>{liveContest.participants?.length || 0} Candidates Competing</span>
-              </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-ink)' }}>
-                {liveContest.title}
-              </h2>
-            </div>
+        (() => {
+          const isLiveSubmitted = !!liveContest.userSession?.isFinished;
+          return (
+            <div className="glass-card" style={{
+              padding: '1.75rem',
+              background: isLiveSubmitted ? 'linear-gradient(135deg, #FFFFFF 0%, rgba(240, 253, 244, 0.6) 100%)' : 'linear-gradient(135deg, #FFFFFF 0%, rgba(254, 226, 226, 0.3) 100%)',
+              borderRadius: '12px',
+              border: isLiveSubmitted ? '1px solid #86EFAC' : '1px solid rgba(239, 68, 68, 0.35)',
+              boxShadow: isLiveSubmitted ? '0 10px 25px -5px rgba(34, 197, 94, 0.1)' : '0 10px 25px -5px rgba(239, 68, 68, 0.1)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                    <span style={{
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '4px',
+                      background: isLiveSubmitted ? '#DCFCE7' : '#FEE2E2',
+                      color: isLiveSubmitted ? '#15803D' : '#DC2626',
+                      fontSize: '0.75rem',
+                      fontWeight: 800
+                    }}>
+                      {isLiveSubmitted ? '✓ CONTEST SUBMITTED' : '🔴 LIVE CONTEST IN PROGRESS'}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-slate)' }}>{liveContest.participants?.length || 0} Candidates Competing</span>
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-ink)' }}>
+                    {liveContest.title}
+                  </h2>
+                </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-slate)', display: 'block' }}>REMAINING TIME</span>
-                <strong style={{ fontSize: '1.8rem', fontFamily: 'IBM Plex Mono, monospace', color: '#DC2626' }}>
-                  {formatSecs(liveContest.endTime ? Math.max(0, Math.floor((new Date(liveContest.endTime).getTime() - currentTime) / 1000)) : liveContest.remainingSecs)}
-                </strong>
-              </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  {!isLiveSubmitted && (
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-slate)', display: 'block' }}>REMAINING TIME</span>
+                      <strong style={{ fontSize: '1.8rem', fontFamily: 'IBM Plex Mono, monospace', color: '#DC2626' }}>
+                        {formatSecs(liveContest.endTime ? Math.max(0, Math.floor((new Date(liveContest.endTime).getTime() - currentTime) / 1000)) : liveContest.remainingSecs)}
+                      </strong>
+                    </div>
+                  )}
 
-              <button className="btn btn-primary" onClick={() => onOpenContest(liveContest)}>
-                <Play size={16} /> Enter Contest Arena
-              </button>
+                  {isLiveSubmitted ? (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => onOpenContest(liveContest)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', border: '1px solid #86EFAC', color: '#166534', background: '#F0FDF4', padding: '0.65rem 1.25rem', fontWeight: 700 }}
+                    >
+                      <Trophy size={18} color="#16A34A" /> View Standings & Results
+                    </button>
+                  ) : (
+                    <button className="btn btn-primary" onClick={() => onOpenContest(liveContest)}>
+                      <Play size={16} /> Enter Contest Arena
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()
       ) : upcomingContest ? (
         <div className="glass-card" style={{
           padding: '1.75rem',

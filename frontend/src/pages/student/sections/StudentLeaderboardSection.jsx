@@ -10,18 +10,33 @@ export const StudentLeaderboardSection = ({
   initialContestId = null
 }) => {
   const { socket, joinContest } = useSocket();
-  const [selectedContestId, setSelectedContestId] = useState(() => {
-    return initialContestId || (contests.length > 0 ? (contests[0]._id || contests[0].id) : 'global');
-  });
+
+  const resolveContestId = (targetId) => {
+    if (!targetId || targetId === 'global') return 'global';
+    const match = contests.find(c => String(c._id) === String(targetId) || String(c.id) === String(targetId) || c.slug === targetId);
+    return match ? (match._id || match.id) : targetId;
+  };
+
+  const getInitialSelectedId = () => {
+    if (initialContestId) {
+      return resolveContestId(initialContestId);
+    }
+    const live = contests.find(c => c.status !== 'Ended' && (c.status === 'Live' || c.status === 'Active' || (c.remainingSecs !== undefined && c.remainingSecs > 0)));
+    if (live) return live._id || live.id;
+    if (contests.length > 0) return contests[0]._id || contests[0].id;
+    return 'global';
+  };
+
+  const [selectedContestId, setSelectedContestId] = useState(getInitialSelectedId);
   const [rankings, setRankings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (initialContestId) {
-      setSelectedContestId(initialContestId);
+      setSelectedContestId(resolveContestId(initialContestId));
     }
-  }, [initialContestId]);
+  }, [initialContestId, contests]);
 
   useEffect(() => {
     fetchLeaderboard();

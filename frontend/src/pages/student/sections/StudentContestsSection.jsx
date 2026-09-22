@@ -79,7 +79,8 @@ export const StudentContestsSection = ({
             const isEnded = c.status === 'Ended' || endMs <= currentTime;
             const isUpcoming = !isEnded && (c.status === 'Upcoming' || startMs > currentTime);
             const isLive = !isEnded && !isUpcoming;
-            const badgeColor = isLive ? '#DC2626' : (isEnded ? '#4F46E5' : '#D97706');
+            const isSubmitted = !!c.userSession?.isFinished;
+            const badgeColor = isSubmitted ? '#15803D' : (isLive ? '#DC2626' : (isEnded ? '#4F46E5' : '#D97706'));
 
             const liveRemSecs = c.endTime ? Math.max(0, Math.floor((endMs - currentTime) / 1000)) : (c.remainingSecs || 0);
             const startsInSecs = c.startTime ? Math.max(0, Math.floor((startMs - currentTime) / 1000)) : (c.startsInSecs || 0);
@@ -91,8 +92,8 @@ export const StudentContestsSection = ({
                 style={{
                   padding: '1.5rem',
                   borderRadius: '10px',
-                  border: isLive ? '1px solid rgba(239, 68, 68, 0.4)' : isUpcoming ? '1px solid #FCD34D' : '1px solid var(--border-color)',
-                  background: isLive ? 'rgba(254, 226, 226, 0.15)' : isUpcoming ? 'rgba(254, 243, 199, 0.25)' : '#FFFFFF',
+                  border: isSubmitted ? '1px solid #86EFAC' : (isLive ? '1px solid rgba(239, 68, 68, 0.4)' : isUpcoming ? '1px solid #FCD34D' : '1px solid var(--border-color)'),
+                  background: isSubmitted ? 'rgba(240, 253, 244, 0.6)' : (isLive ? 'rgba(254, 226, 226, 0.15)' : isUpcoming ? 'rgba(254, 243, 199, 0.25)' : '#FFFFFF'),
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -107,10 +108,10 @@ export const StudentContestsSection = ({
                       borderRadius: '4px',
                       fontSize: '0.75rem',
                       fontWeight: 800,
-                      background: isLive ? '#FEE2E2' : isUpcoming ? '#FEF3C7' : '#E0E7FF',
+                      background: isSubmitted ? '#DCFCE7' : (isLive ? '#FEE2E2' : isUpcoming ? '#FEF3C7' : '#E0E7FF'),
                       color: badgeColor
                     }}>
-                      {isLive ? '🔴 LIVE NOW' : (isEnded ? '✓ ENDED' : '⏳ UPCOMING')}
+                      {isSubmitted ? '✓ SUBMITTED' : (isLive ? '🔴 LIVE NOW' : (isEnded ? '✓ ENDED' : '⏳ UPCOMING'))}
                     </span>
 
                     <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--text-ink)' }}>
@@ -131,7 +132,7 @@ export const StudentContestsSection = ({
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  {isLive && (
+                  {isLive && !isSubmitted && (
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-slate)', display: 'block' }}>REMAINING</span>
                       <strong style={{ fontSize: '1.3rem', fontFamily: 'IBM Plex Mono, monospace', color: '#DC2626' }}>
@@ -140,7 +141,7 @@ export const StudentContestsSection = ({
                     </div>
                   )}
 
-                  {isUpcoming && (
+                  {isUpcoming && !isSubmitted && (
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D97706', display: 'block' }}>STARTS IN</span>
                       <strong style={{ fontSize: '1.3rem', fontFamily: 'IBM Plex Mono, monospace', color: '#D97706' }}>
@@ -149,7 +150,15 @@ export const StudentContestsSection = ({
                     </div>
                   )}
 
-                  {isLive ? (
+                  {isSubmitted ? (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => onOpenContest(c)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', border: '1px solid #86EFAC', color: '#166534', background: '#F0FDF4' }}
+                    >
+                      <Trophy size={16} color="#16A34A" /> View Standings
+                    </button>
+                  ) : isLive ? (
                     <button
                       className="btn btn-primary"
                       onClick={() => onOpenContest(c)}

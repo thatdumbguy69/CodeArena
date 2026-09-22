@@ -384,9 +384,16 @@ export const StudentProblemWorkspace = ({
     try {
       if (warningTimerRef.current) clearInterval(warningTimerRef.current);
       const elem = document.documentElement;
-      if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
-      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+      const fsOpts = { navigationUI: 'hide' };
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen(fsOpts).catch(() => {
+          elem.requestFullscreen().catch(() => {});
+        });
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
 
       if (navigator.keyboard && navigator.keyboard.lock) {
         navigator.keyboard.lock(['Escape']).catch(() => {});
@@ -1959,17 +1966,6 @@ export const StudentProblemWorkspace = ({
                 letterSpacing: '0.5px'
               }}>
                 {currentProblemIndex >= 0 ? `PROBLEM ${currentProblemIndex + 1} OF ${activeProblemsList.length}` : (contestMode ? 'CONTEST PROBLEM' : 'PRACTICE PROBLEM')}
-              </span>
-
-              <span style={{
-                padding: '0.2rem 0.5rem',
-                borderRadius: '4px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                background: question.difficulty === 'Easy' ? '#DCFCE7' : (question.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'),
-                color: question.difficulty === 'Easy' ? '#15803D' : (question.difficulty === 'Medium' ? '#D97706' : '#B91C1C')
-              }}>
-                {question.difficulty || 'Medium'}
               </span>
             </div>
 
