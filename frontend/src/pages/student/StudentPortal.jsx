@@ -515,6 +515,7 @@ export const StudentPortal = ({
               submissions={submissions}
               contests={contests}
               initialContestFilter={submissionsContestFilter}
+              currentUser={user}
             />
           )}
 
