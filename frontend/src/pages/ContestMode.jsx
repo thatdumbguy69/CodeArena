@@ -369,9 +369,16 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const enterFullscreen = () => {
     try {
       const elem = document.documentElement;
-      if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
-      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+      const fsOpts = { navigationUI: 'hide' };
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen(fsOpts).catch(() => {
+          elem.requestFullscreen().catch(() => {});
+        });
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
 
       if (navigator.keyboard && navigator.keyboard.lock) {
         navigator.keyboard.lock(['Escape']).catch(() => {});
@@ -1983,12 +1990,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
               onClick={() => {
                 if (warningTimerRef.current) clearInterval(warningTimerRef.current);
                 setWarningModalOpen(false);
-                try {
-                  const elem = document.documentElement;
-                  if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
-                  else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-                  else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
-                } catch (e) {}
+                enterFullscreen();
               }}
               style={{
                 width: '100%',

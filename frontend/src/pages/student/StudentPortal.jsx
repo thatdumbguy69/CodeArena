@@ -269,15 +269,22 @@ export const StudentPortal = ({
   const handleOpenContest = async (contestObj) => {
     if (!contestObj) return;
 
-    // Trigger browser Fullscreen mode synchronously on user click gesture
+    // Trigger browser Fullscreen mode synchronously on user click gesture with navigationUI: hide
     try {
       const elem = document.documentElement;
+      const fsOpts = { navigationUI: 'hide' };
       if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(() => {});
+        elem.requestFullscreen(fsOpts).catch(() => {
+          elem.requestFullscreen().catch(() => {});
+        });
       } else if (elem.webkitRequestFullscreen) {
         elem.webkitRequestFullscreen();
       } else if (elem.msRequestFullscreen) {
         elem.msRequestFullscreen();
+      }
+
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
       }
     } catch (e) {
       console.warn('Fullscreen request error:', e);
@@ -289,7 +296,7 @@ export const StudentPortal = ({
     const isUpcoming = contestObj.status === 'Upcoming' || startMs > nowMs;
     const isTrulyEnded = !isUpcoming && (contestObj.status === 'Ended' || endMs <= nowMs);
 
-    if (isTrulyEnded) {
+    if (isTrulyEnded || contestObj.userSession?.isFinished) {
       const cId = contestObj._id || contestObj.id || contestObj.slug;
       if (cId) setLeaderboardContestId(String(cId));
       setActiveProblemSlug(null);
@@ -305,8 +312,23 @@ export const StudentPortal = ({
       if (cId) {
         // Start or resume contest session to track official start time
         try {
-          await api.post(`/contests/${cId}/session/start`);
+          const startRes = await api.post(`/contests/${cId}/session/start`);
+          if (startRes.data?.session?.isFinished) {
+            setLeaderboardContestId(String(cId));
+            setActiveProblemSlug(null);
+            setActiveContest(null);
+            setActiveTab('leaderboard');
+            return;
+          }
         } catch (startErr) {
+          if (startErr.response?.data?.isFinished) {
+            alert(startErr.response?.data?.message || 'You have already submitted this contest.');
+            setLeaderboardContestId(String(cId));
+            setActiveProblemSlug(null);
+            setActiveContest(null);
+            setActiveTab('leaderboard');
+            return;
+          }
           if (startErr.response?.data?.isDisqualified) {
             alert(startErr.response?.data?.message || 'You have been disqualified from this contest. Only an administrator can reinstate your qualification.');
             return;
@@ -324,7 +346,7 @@ export const StudentPortal = ({
       const tIsUpcoming = targetContest.status === 'Upcoming' || tStartMs > nowMs;
       const tIsTrulyEnded = !tIsUpcoming && (targetContest.status === 'Ended' || tEndMs <= nowMs);
 
-      if (tIsTrulyEnded) {
+      if (tIsTrulyEnded || targetContest.userSession?.isFinished) {
         const endedId = targetContest._id || targetContest.id || targetContest.slug;
         if (endedId) setLeaderboardContestId(String(endedId));
         setActiveProblemSlug(null);
@@ -358,12 +380,11 @@ export const StudentPortal = ({
         targetSlugOrId = tIsUpcoming ? 'contest-lobby' : 'two-sum';
       }
 
-      setActiveContest(targetContest);
       setActiveProblemSlug(targetSlugOrId);
+      setActiveContest(targetContest);
     } catch (err) {
-      console.error('Error entering contest:', err);
-      setActiveContest(contestObj);
-      setActiveProblemSlug('contest-lobby');
+      console.error('Error opening contest arena:', err);
+      alert('Could not initialize contest arena. Please try again.');
     }
   };
 
@@ -396,6 +417,10 @@ export const StudentPortal = ({
         onBack={() => {
           exitBrowserFullscreen();
           const wasContest = !!activeContest;
+          const contestIdToUse = activeContest?._id || activeContest?.id || activeContest?.slug;
+          if (wasContest && contestIdToUse) {
+            setLeaderboardContestId(String(contestIdToUse));
+          }
           setActiveProblemSlug(null);
           setActiveContest(null);
           if (wasContest) {
