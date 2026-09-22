@@ -1456,14 +1456,14 @@ const StudentProblemWorkspaceInner = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 50%, #F1F5F9 100%)',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '2rem 1.5rem',
-        color: '#FFFFFF',
+        color: '#0F172A',
         fontFamily: 'IBM Plex Sans, sans-serif',
         overflowY: 'auto'
       }}>
@@ -1476,9 +1476,9 @@ const StudentProblemWorkspaceInner = ({
             gap: '0.5rem',
             padding: '0.4rem 1rem',
             borderRadius: '20px',
-            background: 'rgba(59, 130, 246, 0.15)',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            color: '#60A5FA',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            color: '#1D4ED8',
             fontSize: '0.85rem',
             fontWeight: 700,
             marginBottom: '0.75rem',
@@ -1486,10 +1486,10 @@ const StudentProblemWorkspaceInner = ({
           }}>
             <Clock size={16} /> CONTEST SCHEDULED • WAITING LOBBY
           </div>
-          <h1 style={{ fontSize: '2.2rem', fontWeight: 900, margin: '0 0 0.5rem', letterSpacing: '-0.5px', color: '#FFFFFF' }}>
+          <h1 style={{ fontSize: '2.2rem', fontWeight: 900, margin: '0 0 0.5rem', letterSpacing: '-0.5px', color: '#0F172A' }}>
             {contest?.title || 'Competitive Programming Contest'}
           </h1>
-          <p style={{ color: '#94A3B8', fontSize: '1rem', maxWidth: '600px', margin: '0 auto', lineHeight: 1.5 }}>
+          <p style={{ color: '#475569', fontSize: '1rem', maxWidth: '600px', margin: '0 auto', lineHeight: 1.5 }}>
             {contest?.description || 'The contest has not started yet. Please review the instructions below. The workspace and problems will automatically unlock when the countdown reaches zero.'}
           </p>
         </div>
@@ -1504,87 +1504,86 @@ const StudentProblemWorkspaceInner = ({
         }}>
           {days > 0 && (
             <div style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '12px',
+              background: '#FFFFFF',
+              border: '1px solid #E2E8F0',
+              borderRadius: '14px',
               padding: '1.25rem 1.5rem',
-              minWidth: '100px',
+              minWidth: '105px',
               textAlign: 'center',
-              backdropFilter: 'blur(10px)'
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.05)'
             }}>
-              <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#38BDF8', display: 'block', lineHeight: 1 }}>
+              <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#2563EB', display: 'block', lineHeight: 1 }}>
                 {String(days).padStart(2, '0')}
               </span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '1px' }}>Days</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '1px' }}>Days</span>
             </div>
           )}
 
           <div style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '12px',
+            background: '#FFFFFF',
+            border: '1px solid #E2E8F0',
+            borderRadius: '14px',
             padding: '1.25rem 1.5rem',
-            minWidth: '100px',
+            minWidth: '105px',
             textAlign: 'center',
-            backdropFilter: 'blur(10px)'
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.05)'
           }}>
-            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#38BDF8', display: 'block', lineHeight: 1 }}>
+            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#2563EB', display: 'block', lineHeight: 1 }}>
               {String(hrs).padStart(2, '0')}
             </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '1px' }}>Hours</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '1px' }}>Hours</span>
           </div>
 
-          <div style={{ fontSize: '2rem', fontWeight: 900, color: 'rgba(255, 255, 255, 0.3)' }}>:</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, color: '#CBD5E1' }}>:</div>
 
           <div style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '12px',
+            background: '#FFFFFF',
+            border: '1px solid #E2E8F0',
+            borderRadius: '14px',
             padding: '1.25rem 1.5rem',
-            minWidth: '100px',
+            minWidth: '105px',
             textAlign: 'center',
-            backdropFilter: 'blur(10px)'
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.05)'
           }}>
-            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#38BDF8', display: 'block', lineHeight: 1 }}>
+            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#2563EB', display: 'block', lineHeight: 1 }}>
               {String(mins).padStart(2, '0')}
             </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '1px' }}>Minutes</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '1px' }}>Minutes</span>
           </div>
 
-          <div style={{ fontSize: '2rem', fontWeight: 900, color: 'rgba(255, 255, 255, 0.3)' }}>:</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, color: '#CBD5E1' }}>:</div>
 
           <div style={{
-            background: 'rgba(59, 130, 246, 0.1)',
-            border: '1px solid rgba(59, 130, 246, 0.4)',
-            borderRadius: '12px',
+            background: '#EFF6FF',
+            border: '1px solid #93C5FD',
+            borderRadius: '14px',
             padding: '1.25rem 1.5rem',
-            minWidth: '100px',
+            minWidth: '105px',
             textAlign: 'center',
-            backdropFilter: 'blur(10px)',
-            boxShadow: '0 0 25px rgba(59, 130, 246, 0.2)'
+            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.12)'
           }}>
-            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#60A5FA', display: 'block', lineHeight: 1 }}>
+            <span style={{ fontSize: '2.8rem', fontWeight: 900, fontFamily: 'IBM Plex Mono, monospace', color: '#1D4ED8', display: 'block', lineHeight: 1 }}>
               {String(secs).padStart(2, '0')}
             </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: '1px' }}>Seconds</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '1px' }}>Seconds</span>
           </div>
         </div>
 
         <div style={{
           maxWidth: '680px',
           width: '100%',
-          background: 'rgba(30, 41, 59, 0.7)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '14px',
-          padding: '1.5rem 1.75rem',
-          backdropFilter: 'blur(12px)',
+          background: '#FFFFFF',
+          border: '1px solid #E2E8F0',
+          borderRadius: '16px',
+          padding: '1.75rem 2rem',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)',
           marginBottom: '1.75rem'
         }}>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.85rem', color: '#F1F5F9', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShieldAlert size={18} color="#F59E0B" /> Contest Rules & Anti-Cheat Instructions
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.85rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldAlert size={18} color="#D97706" /> Contest Rules & Anti-Cheat Instructions
           </h3>
 
-          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#CBD5E1', fontSize: '0.9rem', lineHeight: 1.6 }}>
+          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#334155', fontSize: '0.9rem', lineHeight: 1.6 }}>
             <li><strong>Fullscreen Requirement:</strong> Once the contest begins, you will be prompted to remain in fullscreen mode.</li>
             <li><strong>Tab Switching & Focus Loss:</strong> Navigating away from this tab, opening other applications, or minimizing the browser will be recorded as a violation.</li>
             <li><strong>Disqualification Limit:</strong> 2 violations will result in automatic lockout and disqualification.</li>
@@ -1596,10 +1595,10 @@ const StudentProblemWorkspaceInner = ({
             marginTop: '1rem',
             padding: '0.75rem 1rem',
             borderRadius: '8px',
-            background: 'rgba(245, 158, 11, 0.1)',
-            border: '1px solid rgba(245, 158, 11, 0.25)',
-            color: '#FCD34D',
-            fontSize: '0.82rem',
+            background: '#FEF3C7',
+            border: '1px solid #FDE68A',
+            color: '#92400E',
+            fontSize: '0.85rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem'
@@ -1612,9 +1611,9 @@ const StudentProblemWorkspaceInner = ({
           className="btn btn-secondary"
           onClick={onBack}
           style={{
-            background: 'rgba(255, 255, 255, 0.08)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            color: '#E2E8F0',
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            color: '#334155',
             padding: '0.65rem 1.5rem',
             borderRadius: '8px',
             fontSize: '0.9rem',
@@ -1622,7 +1621,8 @@ const StudentProblemWorkspaceInner = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.5rem',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
           }}
         >
           <ArrowLeft size={16} /> Exit Waiting Lobby to Dashboard
@@ -1638,13 +1638,13 @@ const StudentProblemWorkspaceInner = ({
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+          background: 'linear-gradient(135deg, #FEF2F2 0%, #FFF1F2 50%, #F8FAFC 100%)',
           zIndex: 99999,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '1.5rem',
-          color: '#FFFFFF',
+          color: '#0F172A',
           fontFamily: 'IBM Plex Sans, sans-serif',
           overflowY: 'auto'
         }}>
@@ -1652,20 +1652,19 @@ const StudentProblemWorkspaceInner = ({
           <div style={{
             maxWidth: '680px',
             width: '100%',
-            background: 'rgba(30, 41, 59, 0.85)',
+            background: '#FFFFFF',
             border: '2px solid #EF4444',
             borderRadius: '20px',
             padding: '2.5rem 2.25rem',
             textAlign: 'center',
-            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.4)',
-            backdropFilter: 'blur(16px)'
+            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.15)'
           }}>
             <div style={{
               width: '76px',
               height: '76px',
               borderRadius: '50%',
-              background: 'rgba(239, 68, 68, 0.15)',
-              border: '2px solid rgba(239, 68, 68, 0.3)',
+              background: '#FEE2E2',
+              border: '2px solid #FCA5A5',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1678,9 +1677,9 @@ const StudentProblemWorkspaceInner = ({
               display: 'inline-block',
               padding: '0.35rem 1rem',
               borderRadius: '20px',
-              background: 'rgba(239, 68, 68, 0.2)',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#F87171',
+              background: '#FEE2E2',
+              border: '1px solid #FCA5A5',
+              color: '#DC2626',
               fontWeight: 800,
               fontSize: '0.82rem',
               letterSpacing: '0.08em',
@@ -1690,26 +1689,26 @@ const StudentProblemWorkspaceInner = ({
               PROCTORING INTEGRITY LOCKOUT
             </div>
 
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#EF4444' }}>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#DC2626' }}>
               Participant Disqualified
             </h2>
 
-            <p style={{ color: '#E2E8F0', margin: '0.5rem 0 1.5rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
+            <p style={{ color: '#475569', margin: '0.5rem 0 1.5rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
               {disqualifiedReason}
             </p>
 
             <div style={{
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
               borderRadius: '12px',
               padding: '1.25rem',
               textAlign: 'left',
               marginBottom: '1.75rem',
               fontSize: '0.88rem',
-              color: '#CBD5E1',
+              color: '#334155',
               lineHeight: 1.6
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#F87171', fontWeight: 700, marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#DC2626', fontWeight: 700, marginBottom: '0.5rem' }}>
                 <ShieldAlert size={16} color="#EF4444" /> Qualification Policy:
               </div>
               <p style={{ margin: '0 0 0.5rem' }}>
@@ -1718,7 +1717,7 @@ const StudentProblemWorkspaceInner = ({
               <p style={{ margin: '0 0 0.5rem' }}>
                 • <strong>Only a Contest Administrator</strong> has the authority to reinstate your qualification.
               </p>
-              <p style={{ margin: 0, color: '#60A5FA', fontWeight: 600 }}>
+              <p style={{ margin: 0, color: '#2563EB', fontWeight: 600 }}>
                 🟢 <em>Live Proctoring Sync: If the administrator reinstates you from their dashboard, this workspace will unlock automatically in real-time.</em>
               </p>
             </div>
@@ -1727,9 +1726,9 @@ const StudentProblemWorkspaceInner = ({
               className="btn btn-secondary"
               onClick={onBack}
               style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: '#FFFFFF',
+                background: '#FFFFFF',
+                border: '1px solid #CBD5E1',
+                color: '#334155',
                 padding: '0.75rem 1.75rem',
                 borderRadius: '8px',
                 fontSize: '0.95rem',
@@ -1737,7 +1736,8 @@ const StudentProblemWorkspaceInner = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
               }}
             >
               <ArrowLeft size={16} /> Exit to Student Portal
@@ -1751,13 +1751,13 @@ const StudentProblemWorkspaceInner = ({
       <div style={{
         position: 'fixed',
         inset: 0,
-        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 50%, #F1F5F9 100%)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1.5rem',
-        color: '#FFFFFF',
+        color: '#0F172A',
         fontFamily: 'IBM Plex Sans, sans-serif',
         overflowY: 'auto'
       }}>
@@ -1765,33 +1765,32 @@ const StudentProblemWorkspaceInner = ({
         <div style={{
           maxWidth: '660px',
           width: '100%',
-          background: 'rgba(30, 41, 59, 0.85)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
+          background: '#FFFFFF',
+          border: '1px solid #E2E8F0',
           borderRadius: '20px',
-          padding: '2.5rem 2.25rem',
+          padding: '2.75rem 2.25rem',
           textAlign: 'center',
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(16px)'
+          boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.07)'
         }}>
           <div style={{
             width: '76px',
             height: '76px',
             borderRadius: '50%',
-            background: 'rgba(59, 130, 246, 0.15)',
-            border: '2px solid rgba(59, 130, 246, 0.3)',
+            background: '#EFF6FF',
+            border: '2px solid #BFDBFE',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '1.25rem'
           }}>
-            <Trophy size={42} color="#60A5FA" />
+            <Trophy size={42} color="#2563EB" />
           </div>
 
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#0F172A' }}>
             {isManuallyFinished ? 'Contest Finished & Submitted' : 'Contest Timings Completed'}
           </h2>
 
-          <p style={{ color: '#94A3B8', margin: '0.5rem 0 1.75rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
+          <p style={{ color: '#475569', margin: '0.5rem 0 1.75rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
             {isManuallyFinished
               ? 'You have successfully concluded your contest participation. All written solutions have been submitted and evaluated.'
               : 'The contest timings are completed. All of your written solutions have been automatically submitted and evaluated.'}
@@ -1807,8 +1806,8 @@ const StudentProblemWorkspaceInner = ({
               }
             }}
             style={{
-              background: '#3B82F6',
-              border: '1px solid #3B82F6',
+              background: '#2563EB',
+              border: '1px solid #2563EB',
               color: '#FFFFFF',
               padding: '0.8rem 1.75rem',
               borderRadius: '8px',
@@ -1817,7 +1816,7 @@ const StudentProblemWorkspaceInner = ({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.5rem',
-              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
+              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
               cursor: 'pointer'
             }}
           >
@@ -1833,21 +1832,21 @@ const StudentProblemWorkspaceInner = ({
       <div style={{
         position: 'fixed',
         inset: 0,
-        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        background: '#F8FAFC',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#FFFFFF',
+        color: '#0F172A',
         fontFamily: 'IBM Plex Sans, sans-serif'
       }}>
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
-        <RefreshCw size={36} className="spin" color="#38BDF8" style={{ marginBottom: '1.25rem' }} />
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F1F5F9' }}>
+        <RefreshCw size={36} className="spin" color="#2563EB" style={{ marginBottom: '1.25rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#0F172A' }}>
           Loading Problem Arena...
         </h3>
-        <p style={{ color: '#94A3B8', fontSize: '0.9rem', margin: 0 }}>
+        <p style={{ color: '#64748B', fontSize: '0.9rem', margin: 0 }}>
           Synchronizing contest questions and setting up the code editor.
         </p>
       </div>
@@ -1859,13 +1858,13 @@ const StudentProblemWorkspaceInner = ({
       <div style={{
         position: 'fixed',
         inset: 0,
-        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        background: '#F8FAFC',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#FFFFFF',
+        color: '#0F172A',
         fontFamily: 'IBM Plex Sans, sans-serif',
         padding: '2rem'
       }}>
@@ -1873,18 +1872,18 @@ const StudentProblemWorkspaceInner = ({
         <div style={{
           maxWidth: '520px',
           width: '100%',
-          background: 'rgba(30, 41, 59, 0.7)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: '#FFFFFF',
+          border: '1px solid #E2E8F0',
           borderRadius: '16px',
           padding: '2.5rem 2rem',
           textAlign: 'center',
-          backdropFilter: 'blur(12px)'
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)'
         }}>
-          <AlertTriangle size={42} color="#F59E0B" style={{ marginBottom: '1rem' }} />
-          <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
+          <AlertTriangle size={42} color="#D97706" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#0F172A' }}>
             Problem Workspace Synchronizing
           </h3>
-          <p style={{ color: '#94A3B8', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+          <p style={{ color: '#64748B', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
             Synchronizing problem set with the contest server. If questions do not appear, try refreshing the arena or returning to the dashboard.
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
@@ -1892,9 +1891,9 @@ const StudentProblemWorkspaceInner = ({
               className="btn btn-secondary"
               onClick={() => fetchProblemDetails()}
               style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: '#FFFFFF',
+                background: '#FFFFFF',
+                border: '1px solid #CBD5E1',
+                color: '#334155',
                 padding: '0.65rem 1.25rem',
                 borderRadius: '8px',
                 fontSize: '0.9rem',
@@ -1902,7 +1901,8 @@ const StudentProblemWorkspaceInner = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
               }}
             >
               <RefreshCw size={15} /> Retry Sync
@@ -1911,8 +1911,8 @@ const StudentProblemWorkspaceInner = ({
               className="btn btn-primary"
               onClick={onBack}
               style={{
-                background: '#3B82F6',
-                border: '1px solid #3B82F6',
+                background: '#2563EB',
+                border: '1px solid #2563EB',
                 color: '#FFFFFF',
                 padding: '0.65rem 1.25rem',
                 borderRadius: '8px',
@@ -1921,6 +1921,7 @@ const StudentProblemWorkspaceInner = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.4rem',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
                 cursor: 'pointer'
               }}
             >

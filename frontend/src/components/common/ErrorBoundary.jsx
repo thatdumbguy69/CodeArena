@@ -35,44 +35,43 @@ export class ErrorBoundary extends React.Component {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+          background: 'linear-gradient(135deg, #FEF2F2 0%, #FFF1F2 50%, #F8FAFC 100%)',
           zIndex: 999999,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '2rem',
-          color: '#FFFFFF',
+          color: '#0F172A',
           fontFamily: 'IBM Plex Sans, sans-serif'
         }}>
           <div style={{
             maxWidth: '560px',
             width: '100%',
-            background: 'rgba(30, 41, 59, 0.85)',
-            border: '2px solid rgba(239, 68, 68, 0.5)',
+            background: '#FFFFFF',
+            border: '1px solid #FECACA',
             borderRadius: '16px',
             padding: '2.5rem 2rem',
             textAlign: 'center',
-            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(16px)'
+            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.08)'
           }}>
             <div style={{
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              background: 'rgba(239, 68, 68, 0.15)',
+              background: '#FEE2E2',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '1.25rem'
             }}>
-              <AlertTriangle size={36} color="#EF4444" />
+              <AlertTriangle size={36} color="#DC2626" />
             </div>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 0.5rem', color: '#F1F5F9' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 0.5rem', color: '#0F172A' }}>
               Workspace Render Interrupted
             </h2>
 
-            <p style={{ color: '#94A3B8', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            <p style={{ color: '#475569', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
               A temporary display error occurred while rendering the workspace. Your code and session progress are preserved in session storage.
             </p>
 
@@ -81,14 +80,16 @@ export class ErrorBoundary extends React.Component {
                 className="btn btn-primary"
                 onClick={this.handleReset}
                 style={{
-                  background: '#3B82F6',
-                  borderColor: '#3B82F6',
+                  background: '#2563EB',
+                  borderColor: '#2563EB',
+                  color: '#FFFFFF',
                   padding: '0.7rem 1.4rem',
                   fontWeight: 700,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)'
                 }}
               >
                 <RefreshCw size={15} /> Reload Workspace
@@ -98,15 +99,16 @@ export class ErrorBoundary extends React.Component {
                   className="btn btn-secondary"
                   onClick={this.props.onBack}
                   style={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                    color: '#FFFFFF',
+                    background: '#FFFFFF',
+                    borderColor: '#CBD5E1',
+                    color: '#334155',
                     padding: '0.7rem 1.4rem',
                     fontWeight: 600,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.4rem',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
                   }}
                 >
                   <ArrowLeft size={15} /> Back to Dashboard
