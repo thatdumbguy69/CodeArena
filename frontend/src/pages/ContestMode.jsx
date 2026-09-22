@@ -183,6 +183,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
 
         if (now < start) {
           setStartsInSecs(Math.max(0, Math.floor((start.getTime() - now.getTime()) / 1000)));
+          setTimeLeft((serverContest.duration || 60) * 60);
         } else {
           setStartsInSecs(0);
           const remaining = Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
@@ -512,8 +513,14 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
       });
 
       setTimeLeft(prev => {
+        const nowMs = Date.now();
+        const startMs = contestData?.startTime ? new Date(contestData.startTime).getTime() : 0;
+        if (startMs > nowMs) {
+          return prev;
+        }
+
         const actualLeft = contestEndTimeRef.current
-          ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000))
+          ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
           : Math.max(0, prev - 1);
 
         if (actualLeft <= 0) {

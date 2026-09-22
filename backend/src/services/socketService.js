@@ -265,6 +265,19 @@ const emitContestEnded = (contestId, altId = null) => {
   }
 };
 
+// Broadcasts newly created or updated contest across all connected clients
+const emitContestPublished = (contest) => {
+  if (!io) return;
+  io.emit('contest:published', { contest, timestamp: new Date() });
+  io.emit('contest:global_refresh', { timestamp: new Date() });
+};
+
+// Broadcasts global contest refresh trigger
+const emitGlobalRefresh = () => {
+  if (!io) return;
+  io.emit('contest:global_refresh', { timestamp: new Date() });
+};
+
 module.exports = {
   init,
   getIO,
@@ -272,5 +285,7 @@ module.exports = {
   emitToProctoring,
   emitToUser,
   emitTimerSync,
-  emitContestEnded
+  emitContestEnded,
+  emitContestPublished,
+  emitGlobalRefresh
 };

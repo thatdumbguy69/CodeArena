@@ -307,7 +307,7 @@ export const StudentPortal = ({
         try {
           await api.post(`/contests/${cId}/session/start`);
         } catch (startErr) {
-          if (startErr.response?.status === 403 || startErr.response?.data?.isDisqualified) {
+          if (startErr.response?.data?.isDisqualified) {
             alert(startErr.response?.data?.message || 'You have been disqualified from this contest. Only an administrator can reinstate your qualification.');
             return;
           }
@@ -335,8 +335,8 @@ export const StudentPortal = ({
 
       let probs = targetContest.problems || [];
       
-      // Fallback: If contest has no assigned problems, fetch questions list or practice questions
-      if (probs.length === 0) {
+      // Fallback: If contest is active/live but has no assigned problems, fetch questions list
+      if (!tIsUpcoming && probs.length === 0) {
         const qRes = await api.get('/questions').catch(() => null);
         const availQuestions = qRes?.data?.questions || [];
         if (availQuestions.length > 0) {
@@ -354,7 +354,7 @@ export const StudentPortal = ({
         targetSlugOrId = firstProb.slug || firstProb._id || firstProb.id;
       }
 
-      if (!targetSlugOrId) {
+      if (!targetSlugOrId && !tIsUpcoming) {
         targetSlugOrId = 'two-sum';
       }
 
@@ -363,7 +363,7 @@ export const StudentPortal = ({
     } catch (err) {
       console.error('Error entering contest:', err);
       setActiveContest(contestObj);
-      setActiveProblemSlug('two-sum');
+      setActiveProblemSlug(null);
     }
   };
 

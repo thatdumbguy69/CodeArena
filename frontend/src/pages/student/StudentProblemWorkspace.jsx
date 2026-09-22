@@ -436,6 +436,7 @@ export const StudentProblemWorkspace = ({
   const questionRef = React.useRef(question);
   const contestRef = React.useRef(contest);
   const contestCompletedRef = React.useRef(contestCompleted);
+  const contestStartsInRef = React.useRef(contestStartsIn);
   const blurCountRef = React.useRef(blurCount);
   const antiCheatLogsRef = React.useRef(antiCheatLogs);
 
@@ -444,6 +445,7 @@ export const StudentProblemWorkspace = ({
   useEffect(() => { questionRef.current = question; }, [question]);
   useEffect(() => { contestRef.current = contest; }, [contest]);
   useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
+  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
   useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
   useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
 
@@ -899,6 +901,41 @@ export const StudentProblemWorkspace = ({
     fetchProblemDetails();
   }, [problemSlug]);
 
+  const handleContestStarted = async () => {
+    setContestStartsIn(0);
+    contestStartsInRef.current = 0;
+    const toastId = Date.now();
+    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
+    setTimeout(() => {
+      setTimerToast(p => (p?.id === toastId ? null : p));
+    }, 7000);
+
+    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
+    if (cId) {
+      try {
+        const res = await api.get(`/contests/${cId}`);
+        if (res.data?.contest) {
+          const freshContest = res.data.contest;
+          contestRef.current = freshContest;
+          if (freshContest.endTime) {
+            contestEndTimeRef.current = new Date(freshContest.endTime);
+            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
+            setContestTimeLeft(left);
+          }
+          const freshProblems = freshContest.problems || [];
+          if (freshProblems.length > 0) {
+            const first = freshProblems[0];
+            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+            await fetchProblemDetails(firstSlug);
+          }
+        }
+      } catch (err) {
+        console.error('Error unlocking contest questions:', err);
+      }
+    }
+    armProctoring();
+  };
+
   useEffect(() => {
     if (contestMode && contest) {
       if (contest.endTime) {
@@ -923,8 +960,15 @@ export const StudentProblemWorkspace = ({
 
       const timer = setInterval(() => {
         setContestTimeLeft(prev => {
+          const nowMs = Date.now();
+          const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
+          if (startMs > nowMs || contestStartsInRef.current > 0) {
+            // Contest has not started yet; do not decrement remaining or auto-submit
+            return prev;
+          }
+
           const actualLeft = contestEndTimeRef.current
-            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000))
+            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
             : Math.max(0, prev - 1);
 
           if (actualLeft <= 0) {
@@ -955,11 +999,7 @@ export const StudentProblemWorkspace = ({
           if (actualStartsIn <= 0) {
             clearInterval(startTimer);
             if (prev > 0) {
-              const toastId = Date.now();
-              setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
-              setTimeout(() => {
-                setTimerToast(p => (p?.id === toastId ? null : p));
-              }, 7000);
+              handleContestStarted();
             }
             return 0;
           }
@@ -987,9 +1027,12 @@ export const StudentProblemWorkspace = ({
               if (isTrulyEnded) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
-              } else if (!isUpcoming && currentC.endTime) {
-                contestEndTimeRef.current = new Date(currentC.endTime);
-                setContestStartsIn(0);
+              } else if (!isUpcoming) {
+                if (contestStartsInRef.current > 0) {
+                  handleContestStarted();
+                } else if (currentC.endTime) {
+                  contestEndTimeRef.current = new Date(currentC.endTime);
+                }
               }
             }
           } catch (e) {}

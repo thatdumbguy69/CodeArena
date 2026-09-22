@@ -3,7 +3,7 @@ const Question = require('../models/Question');
 const ContestSession = require('../models/ContestSession');
 const SystemSetting = require('../models/SystemSetting');
 const { getIsConnected, inMemoryStore } = require('../config/db');
-const { emitTimerSync, emitContestEnded } = require('../services/socketService');
+const { emitTimerSync, emitContestEnded, emitContestPublished, emitGlobalRefresh } = require('../services/socketService');
 
 const slugify = (text) => {
   return text
@@ -273,8 +273,11 @@ const createContest = async (req, res) => {
         autoDisqualify: effectiveAutoDisq,
         createdBy: req.user.id
       });
+      bustContestsCache();
       const populated = await Contest.findById(contest._id).populate('problems');
-      return res.status(201).json({ message: 'Contest hosted successfully', contest: computeContestRealtime(populated) });
+      const realtimeContest = computeContestRealtime(populated);
+      emitContestPublished(realtimeContest);
+      return res.status(201).json({ message: 'Contest hosted successfully', contest: realtimeContest });
     } else {
       // In-Memory store
       if (!inMemoryStore.contests) inMemoryStore.contests = [];
@@ -303,7 +306,9 @@ const createContest = async (req, res) => {
 
       inMemoryStore.contests.push(memContest);
       bustContestsCache();
-      return res.status(201).json({ message: 'Contest hosted successfully', contest: computeContestRealtime(memContest) });
+      const realtimeContest = computeContestRealtime(memContest);
+      emitContestPublished(realtimeContest);
+      return res.status(201).json({ message: 'Contest hosted successfully', contest: realtimeContest });
     }
   } catch (err) {
     console.error('Create contest error:', err);
@@ -377,6 +382,7 @@ const updateContest = async (req, res) => {
       bustContestsCache();
       const populated = await Contest.findById(contest._id).populate('problems');
       const realtimeContest = computeContestRealtime(populated);
+      emitContestPublished(realtimeContest);
 
       if (realtimeContest.status === 'Ended' || otherFields.status === 'Ended') {
         emitContestEnded(contest._id, contest.slug);
@@ -439,6 +445,7 @@ const updateContest = async (req, res) => {
 
       list[idx] = computeContestRealtime(c);
       bustContestsCache();
+      emitContestPublished(list[idx]);
 
       if (list[idx].status === 'Ended' || otherFields.status === 'Ended') {
         emitContestEnded(list[idx]._id, list[idx].slug);
@@ -474,6 +481,7 @@ const deleteContest = async (req, res) => {
       }
 
       bustContestsCache();
+      emitGlobalRefresh();
       return res.json({ message: 'Contest deleted successfully' });
     } else {
       if (inMemoryStore.contests) {
@@ -483,6 +491,7 @@ const deleteContest = async (req, res) => {
         inMemoryStore.contestSessions = inMemoryStore.contestSessions.filter(s => String(s.contest) !== String(id));
       }
       bustContestsCache();
+      emitGlobalRefresh();
       return res.json({ message: 'Contest deleted successfully' });
     }
   } catch (err) {
@@ -508,14 +517,6 @@ const startContestSession = async (req, res) => {
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
       const computed = computeContestRealtime(contest);
-      if (computed.status === 'Upcoming' && req.user?.role !== 'admin') {
-        return res.status(403).json({
-          message: `This contest has not started yet. Entry is permitted only once the contest starts at ${new Date(computed.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-          isUpcoming: true,
-          startTime: computed.startTime,
-          startsInSecs: computed.startsInSecs
-        });
-      }
 
       let session = await ContestSession.findOne({ user: userId, contest: contest._id });
 
@@ -531,25 +532,17 @@ const startContestSession = async (req, res) => {
         session = await ContestSession.create({
           user: userId,
           contest: contest._id,
-          startTime: new Date(),
+          startTime: computed.status === 'Upcoming' ? computed.startTime : new Date(),
           isFinished: false
         });
       }
 
-      return res.json({ session });
+      return res.json({ session, isUpcoming: computed.status === 'Upcoming', startsInSecs: computed.startsInSecs, startTime: computed.startTime });
     } else {
       const contest = inMemoryStore.contests.find(c => String(c._id) === id || c.slug === id);
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
       const computed = computeContestRealtime(contest);
-      if (computed.status === 'Upcoming' && req.user?.role !== 'admin') {
-        return res.status(403).json({
-          message: `This contest has not started yet. Entry is permitted only once the contest starts at ${new Date(computed.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-          isUpcoming: true,
-          startTime: computed.startTime,
-          startsInSecs: computed.startsInSecs
-        });
-      }
 
       if (!inMemoryStore.contestSessions) inMemoryStore.contestSessions = [];
 
@@ -568,13 +561,13 @@ const startContestSession = async (req, res) => {
           _id: 'mem_sess_' + Date.now(),
           user: userId,
           contest: contest._id,
-          startTime: new Date(),
+          startTime: computed.status === 'Upcoming' ? computed.startTime : new Date(),
           isFinished: false
         };
         inMemoryStore.contestSessions.push(session);
       }
 
-      return res.json({ session });
+      return res.json({ session, isUpcoming: computed.status === 'Upcoming', startsInSecs: computed.startsInSecs, startTime: computed.startTime });
     }
   } catch (err) {
     console.error('Start contest session error:', err);
