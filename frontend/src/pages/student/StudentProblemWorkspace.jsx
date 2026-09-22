@@ -349,8 +349,20 @@ export const StudentProblemWorkspace = ({
       setIsFullscreen(isFsNow);
 
       if (isFsNow) {
+        if (navigator.keyboard && navigator.keyboard.lock) {
+          navigator.keyboard.lock(['Escape']).catch(() => {});
+        }
         armProctoring();
       } else {
+        if (navigator.keyboard && navigator.keyboard.unlock) {
+          try { navigator.keyboard.unlock(); } catch (e) {}
+        }
+        if (sessionStorage.getItem('codearena_coordinator_bypass_exit_fs') === 'true') {
+          sessionStorage.removeItem('codearena_coordinator_bypass_exit_fs');
+          isProctoringArmedRef.current = false;
+          setSecurityAlert('🔑 Coordinator Emergency Exit Fullscreen applied. Proctoring is paused.');
+          return;
+        }
         if (contestMode && !contestCompletedRef.current && isProctoringArmedRef.current && contestStartsIn <= 0) {
           handleFocusLoss('Exited fullscreen mode');
         }
@@ -371,6 +383,11 @@ export const StudentProblemWorkspace = ({
       if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
       else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
       else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
+      }
+
       armProctoring();
       setFirstEntryModalOpen(false);
       setWarningModalOpen(false);
@@ -571,6 +588,22 @@ export const StudentProblemWorkspace = ({
         sessionStorage.setItem('codearena_coordinator_bypass_refresh', 'true');
         sessionStorage.removeItem(reloadFlagKey);
         window.location.reload();
+        return false;
+      }
+
+      // Hidden Coordinator Emergency Exit Fullscreen: Ctrl + Alt + Shift + X OR Ctrl + Shift + Esc
+      const isCoordinatorExitFs = 
+        (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'x') ||
+        (isCtrlOrCmd && e.shiftKey && key === 'escape');
+
+      if (isCoordinatorExitFs) {
+        e.preventDefault();
+        e.stopPropagation();
+        sessionStorage.setItem('codearena_coordinator_bypass_exit_fs', 'true');
+        isProctoringArmedRef.current = false;
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        setSecurityAlert('🔑 Coordinator Emergency Exit Fullscreen applied. Proctoring is paused.');
         return false;
       }
 
