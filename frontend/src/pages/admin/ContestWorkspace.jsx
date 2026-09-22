@@ -31,7 +31,7 @@ import { ParticipantDetailsModal } from '../../components/admin/modals/Participa
 import ContestLeaderboard from '../../components/common/ContestLeaderboard';
 import { useSocket } from '../../context/SocketContext';
 
-export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEditingProblem, currentUser }) => {
+export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEditingProblem, setCurrentTab, currentUser }) => {
   const { socket, isConnected, joinAdminProctoring, emitDisqualify, emitQualify, emitTimerSync, emitEndContest } = useSocket();
 
   const [contest, setContest] = useState(null);
@@ -254,28 +254,30 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
     }
   };
 
+  const handleStartContestNow = async () => {
+    if (!contest) return;
+    try {
+      const res = await api.put(`/contests/${contest._id || contest.id}`, { action: 'start_now', duration: contest.duration || 60 });
+      setAuditLogs(prev => [
+        { timestamp: new Date().toLocaleTimeString(), message: 'Contest started LIVE immediately by administrator.' },
+        ...prev
+      ]);
+      fetchContestData();
+    } catch (err) {
+      alert('Error starting contest');
+    }
+  };
+
   const handleAdjustTime = async (minutes) => {
     if (!contest) return;
     const actionLabel = minutes > 0 ? `Extend by ${minutes} mins` : `Reduce by ${Math.abs(minutes)} mins`;
     try {
-      const currentDuration = contest.durationMinutes || contest.duration || 60;
-      const newDuration = Math.max(1, currentDuration + minutes);
       const newRemSecs = Math.max(0, remainingSecs + (minutes * 60));
-      
       setRemainingSecs(newRemSecs);
 
-      // Emit live real-time timer sync to all active contest participants immediately
-      if (emitTimerSync) {
-        emitTimerSync({
-          contestId: contest._id || contest.id || contestId,
-          remainingSecs: newRemSecs,
-          extraMinutes: minutes
-        });
-      }
-
-      await api.put(`/contests/${contest._id || contest.id}`, { duration: newDuration });
+      await api.put(`/contests/${contest._id || contest.id}`, { timeAdjustmentMins: minutes });
       setAuditLogs(prev => [
-        { timestamp: new Date().toLocaleTimeString(), message: `Admin adjusted duration: ${actionLabel} (New duration: ${newDuration}m)` },
+        { timestamp: new Date().toLocaleTimeString(), message: `Admin adjusted duration: ${actionLabel}` },
         ...prev
       ]);
       fetchContestData();
@@ -507,6 +509,7 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 if (setEditingContest) setEditingContest(contest);
+                if (setCurrentTab) setCurrentTab('host-contest');
               }}
             >
               <Edit size={16} /> Edit Contest
@@ -638,6 +641,15 @@ export const ContestWorkspace = ({ contestId, onBack, setEditingContest, setEdit
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+              {(contest.status !== 'Live' || remainingSecs <= 0) && (
+                <button
+                  className="btn btn-primary"
+                  onClick={handleStartContestNow}
+                  style={{ background: '#16A34A', borderColor: '#16A34A' }}
+                >
+                  <Play size={16} /> Start Contest Live Now
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={() => handleAdjustTime(15)}>
                 +15 Minutes
               </button>

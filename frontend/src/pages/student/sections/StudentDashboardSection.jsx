@@ -24,11 +24,29 @@ export const StudentDashboardSection = ({
   onOpenContest,
   onNavigateTab
 }) => {
+  const [currentTime, setCurrentTime] = React.useState(Date.now());
+  React.useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const s = stats?.stats || { easyCount: 0, mediumCount: 0, hardCount: 0, totalAttempted: 0, totalAccepted: 0 };
   const accuracyRate = s.totalAttempted > 0 ? Math.round((s.totalAccepted / s.totalAttempted) * 100) : 0;
 
-  const liveContest = contests.find(c => c.status === 'Live' || c.status === 'Active' || (c.remainingSecs !== undefined && c.remainingSecs > 0));
-  const upcomingContest = contests.find(c => c.status === 'Upcoming');
+  const liveContest = contests.find(c => {
+    const startMs = c.startTime ? new Date(c.startTime).getTime() : 0;
+    const endMs = c.endTime ? new Date(c.endTime).getTime() : Infinity;
+    if (c.status === 'Ended') return false;
+    if (startMs > currentTime) return false;
+    if (endMs <= currentTime) return false;
+    return c.status === 'Live' || c.status === 'Active' || (c.remainingSecs !== undefined && c.remainingSecs > 0);
+  });
+
+  const upcomingContest = contests.find(c => {
+    if (c.status === 'Ended') return false;
+    const startMs = c.startTime ? new Date(c.startTime).getTime() : 0;
+    return c.status === 'Upcoming' || startMs > currentTime;
+  });
 
   const formatSecs = (secs) => {
     if (!secs || secs <= 0) return '00:00:00';
@@ -149,7 +167,7 @@ export const StudentDashboardSection = ({
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-slate)', display: 'block' }}>REMAINING TIME</span>
                 <strong style={{ fontSize: '1.8rem', fontFamily: 'IBM Plex Mono, monospace', color: '#DC2626' }}>
-                  {formatSecs(liveContest.remainingSecs)}
+                  {formatSecs(liveContest.endTime ? Math.max(0, Math.floor((new Date(liveContest.endTime).getTime() - currentTime) / 1000)) : liveContest.remainingSecs)}
                 </strong>
               </div>
 
@@ -160,22 +178,48 @@ export const StudentDashboardSection = ({
           </div>
         </div>
       ) : upcomingContest ? (
-        <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="glass-card" style={{
+          padding: '1.75rem',
+          background: 'linear-gradient(135deg, #FFFFFF 0%, rgba(254, 243, 199, 0.3) 100%)',
+          borderRadius: '12px',
+          border: '1px solid #FCD34D',
+          boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.1)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
           <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              ⏳ NEXT UPCOMING CONTEST
-            </span>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: 'var(--text-ink)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+              <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#D97706', fontSize: '0.75rem', fontWeight: 800 }}>
+                ⏳ UPCOMING CONTEST
+              </span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-slate)' }}>
+                Starts at {new Date(upcomingContest.startTime || Date.now()).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0.2rem 0 0', color: 'var(--text-ink)' }}>
               {upcomingContest.title}
-            </h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-slate)' }}>
-              Scheduled for {new Date(upcomingContest.startTime || Date.now()).toLocaleString()}
-            </span>
+            </h2>
           </div>
 
-          <button className="btn btn-secondary" onClick={() => onNavigateTab('contests')}>
-            View Contest Details <ArrowRight size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D97706', display: 'block' }}>STARTS IN</span>
+              <strong style={{ fontSize: '1.8rem', fontFamily: 'IBM Plex Mono, monospace', color: '#D97706' }}>
+                {formatSecs(upcomingContest.startTime ? Math.max(0, Math.floor((new Date(upcomingContest.startTime).getTime() - currentTime) / 1000)) : upcomingContest.startsInSecs)}
+              </strong>
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={() => onOpenContest(upcomingContest)}
+              style={{ background: '#D97706', borderColor: '#D97706' }}
+            >
+              <Play size={16} /> Enter Contest Lobby
+            </button>
+          </div>
         </div>
       ) : null}
 

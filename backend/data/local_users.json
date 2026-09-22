@@ -4,24 +4,24 @@
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "tabraizsmd@gmail.com",
-    "password": "$2a$10$ubpdI5.Fv/yllPSiPxMRg.bU3voXgMliRQNVwNxSHzzwlmtpw6E4W",
+    "password": "$2a$10$8f.8.XloCHl2ZZUGOQGFIOjFeQzZt72hIn048tpg7jXkHqEFxR98K",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T18:44:25.316Z",
-    "lastLogin": "2026-09-21T18:44:25.316Z"
+    "createdAt": "2026-09-22T06:41:07.330Z",
+    "lastLogin": "2026-09-22T06:41:07.330Z"
   },
   {
     "_id": "admin_user_1",
     "name": "SMD Tabraiz (ADMIN)",
     "teamName": "Administration",
     "email": "admin@platform.com",
-    "password": "$2a$10$Sd5esdWEvSlfLWrnUM7.Du91tNP0JignW2vb4PmP/UjCTnnpYFGJG",
+    "password": "$2a$10$YcRSCbvnM0kkMQ6cqqPHleU0HT0mMMabU9XKpk3Bd0tKrEIlP2NFe",
     "role": "admin",
     "score": 0,
     "solvedCount": 0,
-    "createdAt": "2026-09-21T18:44:25.425Z",
-    "lastLogin": "2026-09-21T18:44:25.425Z"
+    "createdAt": "2026-09-22T06:41:07.740Z",
+    "lastLogin": "2026-09-22T06:41:07.740Z"
   },
   {
     "id": "6ab17400924290a222c41d40",

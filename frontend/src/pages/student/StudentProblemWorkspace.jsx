@@ -83,9 +83,13 @@ export const StudentProblemWorkspace = ({
 
   const [contestCompleted, setContestCompleted] = useState(() => {
     if (!contestMode || !contest) return false;
+    const nowMs = Date.now();
+    const startMs = contest.startTime ? new Date(contest.startTime).getTime() : 0;
+    const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
+    const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
+    if (isUpcoming) return false;
     if (contest.status === 'Ended') return true;
-    if (contest.endTime && new Date(contest.endTime).getTime() <= Date.now()) return true;
-    if (contest.remainingSecs !== undefined && contest.remainingSecs <= 0 && contest.startsInSecs <= 0) return true;
+    if (endMs <= nowMs && startMs <= nowMs) return true;
     return false;
   });
 
@@ -974,9 +978,18 @@ export const StudentProblemWorkspace = ({
             const res = await api.get(`/contests/${cId}`);
             if (res.data?.contest) {
               const currentC = res.data.contest;
-              if (currentC.status === 'Ended' || currentC.remainingSecs <= 0) {
+              const nowMs = Date.now();
+              const startMs = currentC.startTime ? new Date(currentC.startTime).getTime() : 0;
+              const endMs = currentC.endTime ? new Date(currentC.endTime).getTime() : Infinity;
+              const isUpcoming = currentC.status === 'Upcoming' || startMs > nowMs;
+              const isTrulyEnded = !isUpcoming && (currentC.status === 'Ended' || endMs <= nowMs);
+
+              if (isTrulyEnded) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
+              } else if (!isUpcoming && currentC.endTime) {
+                contestEndTimeRef.current = new Date(currentC.endTime);
+                setContestStartsIn(0);
               }
             }
           } catch (e) {}

@@ -6,12 +6,24 @@ export const StudentContestsSection = ({
   onOpenContest
 }) => {
   const [activeTab, setActiveTab] = useState('All'); // All | Live | Upcoming | Completed
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const filteredContests = contests.filter(c => {
+    const startMs = c.startTime ? new Date(c.startTime).getTime() : 0;
+    const endMs = c.endTime ? new Date(c.endTime).getTime() : Infinity;
+    const isEnded = c.status === 'Ended' || endMs <= currentTime;
+    const isUpcoming = !isEnded && (c.status === 'Upcoming' || startMs > currentTime);
+    const isLive = !isEnded && !isUpcoming;
+
     if (activeTab === 'All') return true;
-    if (activeTab === 'Live') return c.status === 'Live' || c.status === 'Active' || (c.remainingSecs !== undefined && c.remainingSecs > 0 && c.status !== 'Upcoming');
-    if (activeTab === 'Upcoming') return c.status === 'Upcoming';
-    if (activeTab === 'Completed') return c.status === 'Ended';
+    if (activeTab === 'Live') return isLive;
+    if (activeTab === 'Upcoming') return isUpcoming;
+    if (activeTab === 'Completed') return isEnded;
     return true;
   });
 
@@ -62,12 +74,15 @@ export const StudentContestsSection = ({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {filteredContests.map(c => {
-            const now = Date.now();
-            const startMs = c.startTime ? new Date(c.startTime).getTime() : now;
-            const isUpcoming = c.status === 'Upcoming' || (c.startsInSecs !== undefined && c.startsInSecs > 0) || (startMs > now);
-            const isEnded = c.status === 'Ended';
-            const isLive = !isUpcoming && !isEnded;
+            const startMs = c.startTime ? new Date(c.startTime).getTime() : currentTime;
+            const endMs = c.endTime ? new Date(c.endTime).getTime() : (startMs + (c.duration || 60) * 60000);
+            const isEnded = c.status === 'Ended' || endMs <= currentTime;
+            const isUpcoming = !isEnded && (c.status === 'Upcoming' || startMs > currentTime);
+            const isLive = !isEnded && !isUpcoming;
             const badgeColor = isLive ? '#DC2626' : (isEnded ? '#4F46E5' : '#D97706');
+
+            const liveRemSecs = c.endTime ? Math.max(0, Math.floor((endMs - currentTime) / 1000)) : (c.remainingSecs || 0);
+            const startsInSecs = c.startTime ? Math.max(0, Math.floor((startMs - currentTime) / 1000)) : (c.startsInSecs || 0);
 
             return (
               <div
@@ -120,7 +135,7 @@ export const StudentContestsSection = ({
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-slate)', display: 'block' }}>REMAINING</span>
                       <strong style={{ fontSize: '1.3rem', fontFamily: 'IBM Plex Mono, monospace', color: '#DC2626' }}>
-                        {formatSecs(c.remainingSecs)}
+                        {formatSecs(liveRemSecs)}
                       </strong>
                     </div>
                   )}
@@ -129,7 +144,7 @@ export const StudentContestsSection = ({
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D97706', display: 'block' }}>STARTS IN</span>
                       <strong style={{ fontSize: '1.3rem', fontFamily: 'IBM Plex Mono, monospace', color: '#D97706' }}>
-                        {formatSecs(c.startsInSecs || Math.max(0, Math.floor((startMs - now) / 1000)))}
+                        {formatSecs(startsInSecs)}
                       </strong>
                     </div>
                   )}
@@ -143,11 +158,11 @@ export const StudentContestsSection = ({
                     </button>
                   ) : isUpcoming ? (
                     <button
-                      className="btn btn-secondary"
-                      style={{ opacity: 0.8, cursor: 'not-allowed', background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D' }}
-                      onClick={() => alert(`⏳ This contest has not started yet.\n\nStarts at: ${new Date(c.startTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.\nAccess will automatically unlock at start time.`)}
+                      className="btn btn-primary"
+                      style={{ background: '#D97706', borderColor: '#D97706' }}
+                      onClick={() => onOpenContest(c)}
                     >
-                      <Lock size={15} /> Opens at Start Time
+                      <Play size={16} /> Enter Waiting Lobby
                     </button>
                   ) : (
                     <button

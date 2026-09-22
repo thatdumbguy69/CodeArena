@@ -218,28 +218,36 @@ export const StudentPortal = ({
         let changed = false;
         const updated = prevContests.map(c => {
           let secs = c.remainingSecs;
+          let startsIn = c.startsInSecs;
           const nowMs = Date.now();
+          const startMs = c.startTime ? new Date(c.startTime).getTime() : 0;
+          const endMs = c.endTime ? new Date(c.endTime).getTime() : (startMs + (c.duration || 60) * 60000);
+
+          if (c.startTime) {
+            startsIn = Math.max(0, Math.floor((startMs - nowMs) / 1000));
+          }
+
           if (c.endTime) {
-            const endMs = new Date(c.endTime).getTime();
             secs = Math.max(0, Math.floor((endMs - nowMs) / 1000));
           } else if (secs !== undefined && secs > 0) {
             secs = secs - 1;
           }
 
           let newStatus = c.status;
-          if (c.status === 'Ended' || (secs !== undefined && secs <= 0 && (!c.startTime || new Date(c.startTime).getTime() <= nowMs))) {
+          if (c.status === 'Ended' || (endMs <= nowMs && startMs <= nowMs)) {
             newStatus = 'Ended';
-          } else if (c.startTime && new Date(c.startTime).getTime() > nowMs) {
+          } else if (startMs > nowMs) {
             newStatus = 'Upcoming';
           } else {
             newStatus = 'Active';
           }
 
-          if (secs !== c.remainingSecs || newStatus !== c.status) {
+          if (secs !== c.remainingSecs || startsIn !== c.startsInSecs || newStatus !== c.status) {
             changed = true;
             return {
               ...c,
               remainingSecs: secs,
+              startsInSecs: startsIn,
               status: newStatus
             };
           }
@@ -275,7 +283,13 @@ export const StudentPortal = ({
       console.warn('Fullscreen request error:', e);
     }
 
-    if (contestObj.status === 'Ended') {
+    const nowMs = Date.now();
+    const startMs = contestObj.startTime ? new Date(contestObj.startTime).getTime() : 0;
+    const endMs = contestObj.endTime ? new Date(contestObj.endTime).getTime() : Infinity;
+    const isUpcoming = contestObj.status === 'Upcoming' || startMs > nowMs;
+    const isTrulyEnded = !isUpcoming && (contestObj.status === 'Ended' || endMs <= nowMs);
+
+    if (isTrulyEnded) {
       const cId = contestObj._id || contestObj.id || contestObj.slug;
       if (cId) setLeaderboardContestId(String(cId));
       setActiveProblemSlug(null);
@@ -305,7 +319,12 @@ export const StudentPortal = ({
         }
       }
 
-      if (targetContest.status === 'Ended') {
+      const tStartMs = targetContest.startTime ? new Date(targetContest.startTime).getTime() : 0;
+      const tEndMs = targetContest.endTime ? new Date(targetContest.endTime).getTime() : Infinity;
+      const tIsUpcoming = targetContest.status === 'Upcoming' || tStartMs > nowMs;
+      const tIsTrulyEnded = !tIsUpcoming && (targetContest.status === 'Ended' || tEndMs <= nowMs);
+
+      if (tIsTrulyEnded) {
         const endedId = targetContest._id || targetContest.id || targetContest.slug;
         if (endedId) setLeaderboardContestId(String(endedId));
         setActiveProblemSlug(null);

@@ -762,6 +762,7 @@ export const AdminPortal = ({
               onBack={() => setActiveWorkspaceContest(null)}
               setEditingContest={setEditingContest}
               setEditingProblem={setEditingProblem}
+              setCurrentTab={setCurrentTab}
               currentUser={user}
             />
           ) : (
