@@ -24,12 +24,16 @@ export const SocketProvider = ({ children }) => {
   const lastJoinedContestRef = useRef(null);
 
   useEffect(() => {
+    const token = localStorage.getItem('codearena_token') || sessionStorage.getItem('codearena_token');
     const socket = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 20,
       reconnectionDelay: 1000,
+      auth: {
+        token: token || ''
+      },
       extraHeaders: {
         'ngrok-skip-browser-warning': '69420'
       }
@@ -91,7 +95,8 @@ export const SocketProvider = ({ children }) => {
 
   const joinAdminProctoring = () => {
     if (socketRef.current) {
-      socketRef.current.emit('join_admin_proctoring');
+      const token = localStorage.getItem('codearena_token') || sessionStorage.getItem('codearena_token');
+      socketRef.current.emit('join_admin_proctoring', { token });
     }
   };
 

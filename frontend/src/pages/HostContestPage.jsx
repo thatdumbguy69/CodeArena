@@ -182,13 +182,14 @@ export const HostContestPage = ({ contestToEdit, setCurrentTab }) => {
         autoDisqualify
       };
 
-      if (contestToEdit && contestToEdit._id) {
-        await api.put(`/contests/${contestToEdit._id}`, payload);
+      const targetId = contestToEdit?._id || contestToEdit?.id;
+      if (targetId) {
+        await api.put(`/contests/${targetId}`, payload);
       } else {
         await api.post('/contests', payload);
       }
 
-      alert('Contest published successfully!');
+      alert(targetId ? 'Contest updated successfully!' : 'Contest published successfully!');
       setCurrentTab('admin');
     } catch (err) {
       console.error('Error publishing contest:', err);
@@ -321,9 +322,22 @@ export const HostContestPage = ({ contestToEdit, setCurrentTab }) => {
                 onChange={(e) => handleStartTimeChange(e.target.value)}
                 required
               />
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-slate)', marginTop: '0.35rem', display: 'block' }}>
-                When the contest problem statements unlock.
-              </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.35rem' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-slate)' }}>
+                  When problem statements unlock.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', height: 'auto' }}
+                  onClick={() => {
+                    const now = new Date();
+                    handleStartTimeChange(formatDateTimeLocal(now));
+                  }}
+                >
+                  ⚡ Start Now
+                </button>
+              </div>
             </div>
 
             {/* 2. End Time */}
