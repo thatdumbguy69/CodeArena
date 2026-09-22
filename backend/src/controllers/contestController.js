@@ -317,6 +317,18 @@ const createContest = async (req, res) => {
     else if (now >= end) initialStatus = 'Ended';
 
     if (getIsConnected()) {
+      let resolvedProblemIds = [];
+      if (problemIds && Array.isArray(problemIds)) {
+        for (const pid of problemIds) {
+          if (typeof pid === 'string' && pid.match(/^[0-9a-fA-F]{24}$/)) {
+            resolvedProblemIds.push(pid);
+          } else {
+            const q = await Question.findOne({ $or: [{ slug: pid }, { title: pid }] });
+            if (q) resolvedProblemIds.push(q._id);
+          }
+        }
+      }
+
       const contest = await Contest.create({
         title,
         slug,
@@ -325,7 +337,7 @@ const createContest = async (req, res) => {
         startTime: start,
         endTime: end,
         status: initialStatus,
-        problems: problemIds || [],
+        problems: resolvedProblemIds,
         antiCheatEnabled: antiCheatEnabled !== undefined ? antiCheatEnabled : true,
         maxAllowedBlurs: effectiveMaxBlurs,
         autoDisqualify: effectiveAutoDisq,
@@ -341,7 +353,7 @@ const createContest = async (req, res) => {
       if (!inMemoryStore.contests) inMemoryStore.contests = [];
 
       const selectedProblems = (inMemoryStore.questions || []).filter(q =>
-        (problemIds || []).includes(String(q._id)) || (problemIds || []).includes(q.slug)
+        (problemIds || []).some(pid => String(pid) === String(q._id) || String(pid) === String(q.id) || String(pid) === String(q.slug))
       );
 
       const memContest = {
@@ -378,7 +390,7 @@ const createContest = async (req, res) => {
 const updateContest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { timeAdjustmentMins, startTime, duration, endTime, action, ...otherFields } = req.body;
+    const { timeAdjustmentMins, startTime, duration, endTime, action, problemIds, ...otherFields } = req.body;
 
     if (otherFields.maxAllowedBlurs !== undefined) {
       otherFields.maxAllowedBlurs = Math.max(1, parseInt(otherFields.maxAllowedBlurs, 10) || 2);
@@ -388,8 +400,23 @@ const updateContest = async (req, res) => {
     }
 
     if (getIsConnected()) {
-      let contest = await Contest.findById(id);
+      let contest = id.match(/^[0-9a-fA-F]{24}$/)
+        ? await Contest.findById(id)
+        : await Contest.findOne({ slug: id });
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
+
+      if (problemIds && Array.isArray(problemIds)) {
+        let resolvedProblemIds = [];
+        for (const pid of problemIds) {
+          if (typeof pid === 'string' && pid.match(/^[0-9a-fA-F]{24}$/)) {
+            resolvedProblemIds.push(pid);
+          } else {
+            const q = await Question.findOne({ $or: [{ slug: pid }, { title: pid }] });
+            if (q) resolvedProblemIds.push(q._id);
+          }
+        }
+        contest.problems = resolvedProblemIds;
+      }
 
       const now = new Date();
 

@@ -1,20 +1,39 @@
-import React, { useState } from 'react';
-import { Send, Search, Filter, Eye, CheckCircle, XCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Search, Filter, Eye, CheckCircle, XCircle, Clock, Trophy } from 'lucide-react';
 import { SubmissionDetailModal } from '../../../components/student/modals/SubmissionDetailModal';
 
 export const StudentSubmissionsSection = ({
-  submissions = []
+  submissions = [],
+  contests = [],
+  initialContestFilter = 'all'
 }) => {
   const [search, setSearch] = useState('');
   const [verdictFilter, setVerdictFilter] = useState('All');
+  const [contestFilter, setContestFilter] = useState(initialContestFilter || 'all');
   const [selectedSubmission, setSelectedSubmission] = useState(null);
+
+  useEffect(() => {
+    if (initialContestFilter) {
+      setContestFilter(initialContestFilter);
+    }
+  }, [initialContestFilter]);
 
   const filteredSubmissions = submissions.filter(sub => {
     const matchesSearch = !search ||
       (sub.questionTitle && sub.questionTitle.toLowerCase().includes(search.toLowerCase())) ||
+      (sub.question?.title && sub.question.title.toLowerCase().includes(search.toLowerCase())) ||
       (sub.language && sub.language.toLowerCase().includes(search.toLowerCase()));
     const matchesVerdict = verdictFilter === 'All' || sub.verdict === verdictFilter || sub.status === verdictFilter;
-    return matchesSearch && matchesVerdict;
+
+    let matchesContest = true;
+    if (contestFilter === 'practice') {
+      matchesContest = !sub.contest;
+    } else if (contestFilter !== 'all') {
+      const subContestId = sub.contest ? (sub.contest._id || sub.contest.id || sub.contest.slug || sub.contest) : null;
+      matchesContest = subContestId && String(subContestId) === String(contestFilter);
+    }
+
+    return matchesSearch && matchesVerdict && matchesContest;
   });
 
   return (
@@ -42,10 +61,28 @@ export const StudentSubmissionsSection = ({
           />
         </div>
 
+        {/* Contest Filter Dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Trophy size={16} color="var(--accent-blue)" />
+          <select
+            value={contestFilter}
+            onChange={e => setContestFilter(e.target.value)}
+            style={{ padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#FFF', fontWeight: 600, fontSize: '0.85rem' }}
+          >
+            <option value="all">🌎 All Submissions</option>
+            <option value="practice">💻 Practice Only</option>
+            {contests.map(c => (
+              <option key={c._id || c.id} value={c._id || c.id}>
+                🏆 {c.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <select
           value={verdictFilter}
           onChange={e => setVerdictFilter(e.target.value)}
-          style={{ padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#FFF' }}
+          style={{ padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#FFF', fontSize: '0.85rem' }}
         >
           <option value="All">All Verdicts</option>
           <option value="Accepted">Accepted</option>
@@ -82,7 +119,14 @@ export const StudentSubmissionsSection = ({
                 return (
                   <tr key={sub._id || sub.id || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td style={{ padding: '0.85rem 1.25rem', fontWeight: 700, color: 'var(--text-ink)' }}>
-                      {sub.questionTitle || 'Two Sum'}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span>{sub.questionTitle || sub.question?.title || 'Problem'}</span>
+                        {sub.contest && (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-blue)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            🏆 {typeof sub.contest === 'object' ? (sub.contest.title || 'Contest') : 'Contest'}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td style={{ padding: '0.85rem 1.25rem' }}>

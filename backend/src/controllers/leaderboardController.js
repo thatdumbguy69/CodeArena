@@ -47,6 +47,7 @@ const calculateUserTimes = (questionDataMap, userStartTime = null) => {
       title: data.qTitle || 'Problem',
       score: data.score || 0,
       verdict: data.verdict || (isSolved ? 'Accepted' : 'Unattempted'),
+      language: data.language || null,
       isSolved,
       seconds,
       formatted: seconds !== null ? formatDuration(seconds) : 'N/A'
@@ -172,7 +173,7 @@ const getLeaderboard = async (req, res) => {
           relevantSubmissions = await Submission.find({
             contest: contest._id
           })
-            .select('user question questionTitle score verdict executionTime createdAt blurCount')
+            .select('user question questionTitle score verdict language executionTime createdAt blurCount')
             .populate('user', 'name teamName email')
             .populate('question', 'title slug difficulty points')
             .sort({ createdAt: 1 })
@@ -206,6 +207,7 @@ const getLeaderboard = async (req, res) => {
                   firstAcceptedTime: null,
                   score: 0,
                   verdict: 'Unattempted',
+                  language: null,
                   executionTime: 0,
                   qTitle: title
                 };
@@ -298,6 +300,7 @@ const getLeaderboard = async (req, res) => {
               firstAcceptedTime: isAccepted ? subTime : null,
               score: currentScore,
               verdict: sub.verdict,
+              language: sub.language || null,
               executionTime: sub.executionTime || 0,
               qTitle
             };
@@ -311,6 +314,7 @@ const getLeaderboard = async (req, res) => {
               qData.score = currentScore;
               qData.bestSubTime = subTime;
               qData.verdict = sub.verdict;
+              qData.language = sub.language || qData.language;
               qData.executionTime = sub.executionTime || qData.executionTime || 0;
             }
           }

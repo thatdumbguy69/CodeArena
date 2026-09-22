@@ -61,6 +61,33 @@ export const StudentProblemWorkspace = ({
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [practiceProblemsList, setPracticeProblemsList] = useState(allProblems || []);
+  const [currentContestData, setCurrentContestData] = useState(contest);
+
+  useEffect(() => {
+    if (contest) {
+      setCurrentContestData(prev => {
+        if (contest.problems && contest.problems.length > 0) {
+          return { ...prev, ...contest };
+        }
+        return { ...contest, problems: (prev?.problems && prev.problems.length > 0) ? prev.problems : contest.problems };
+      });
+    }
+  }, [contest]);
+
+  // Suppress Chromium Fullscreen top hover exit UI pill
+  useEffect(() => {
+    if (!contestMode) return;
+    const preventTopPill = (e) => {
+      if (e.clientY <= 4) {
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('mousemove', preventTopPill, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('mousemove', preventTopPill, { capture: true });
+    };
+  }, [contestMode]);
+
   const [contestTimeLeft, setContestTimeLeft] = useState(() => {
     if (contest?.endTime) {
       return Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000));
@@ -71,12 +98,12 @@ export const StudentProblemWorkspace = ({
   // Countdown timer until contest begins
   const [contestStartsIn, setContestStartsIn] = useState(() => {
     if (!contestMode || !contest) return 0;
-    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
-      return Math.max(0, contest.startsInSecs);
-    }
     if (contest.startTime) {
       const diff = Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000);
       return Math.max(0, diff);
+    }
+    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
+      return Math.max(0, contest.startsInSecs);
     }
     return 0;
   });
@@ -924,6 +951,7 @@ export const StudentProblemWorkspace = ({
         if (res.data?.contest) {
           const freshContest = res.data.contest;
           contestRef.current = freshContest;
+          setCurrentContestData(freshContest);
           if (freshContest.endTime) {
             contestEndTimeRef.current = new Date(freshContest.endTime);
             const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
@@ -945,9 +973,13 @@ export const StudentProblemWorkspace = ({
 
   useEffect(() => {
     if (contestMode && contest) {
+      // Set or preserve monotonic end timestamp without resetting on prop re-renders
       if (contest.endTime) {
-        contestEndTimeRef.current = new Date(contest.endTime);
-      } else if (contest.remainingSecs) {
+        const parsedEnd = new Date(contest.endTime);
+        if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - parsedEnd.getTime()) > 5000) {
+          contestEndTimeRef.current = parsedEnd;
+        }
+      } else if (contest.remainingSecs && !contestEndTimeRef.current) {
         contestEndTimeRef.current = new Date(Date.now() + contest.remainingSecs * 1000);
       }
 
@@ -956,35 +988,28 @@ export const StudentProblemWorkspace = ({
           const diff = Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000);
           return Math.max(0, diff);
         }
-        if (contest.endTime) {
-          const diff = Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000);
-          return Math.max(0, diff);
-        }
         return Math.max(0, contest.remainingSecs || 0);
       };
 
       setContestTimeLeft(getLeftSecs());
 
       const timer = setInterval(() => {
-        setContestTimeLeft(prev => {
-          const nowMs = Date.now();
-          const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
-          if (startMs > nowMs || contestStartsInRef.current > 0) {
-            // Contest has not started yet; do not decrement remaining or auto-submit
-            return prev;
-          }
+        const nowMs = Date.now();
+        const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
+        if (startMs > nowMs || contestStartsInRef.current > 0) {
+          return;
+        }
 
-          const actualLeft = contestEndTimeRef.current
-            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
-            : Math.max(0, prev - 1);
+        const actualLeft = contestEndTimeRef.current
+          ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
+          : Math.max(0, contestTimeLeft - 1);
 
-          if (actualLeft <= 0) {
-            clearInterval(timer);
-            handleAutoSubmitContest();
-            return 0;
-          }
-          return actualLeft;
-        });
+        setContestTimeLeft(actualLeft);
+
+        if (actualLeft <= 0) {
+          clearInterval(timer);
+          handleAutoSubmitContest();
+        }
       }, 1000);
 
       const getStartsIn = () => {
@@ -998,20 +1023,18 @@ export const StudentProblemWorkspace = ({
       setContestStartsIn(getStartsIn());
 
       const startTimer = setInterval(() => {
-        setContestStartsIn(prev => {
-          const actualStartsIn = contest.startTime
-            ? Math.max(0, Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000))
-            : Math.max(0, prev - 1);
+        const nowMs = Date.now();
+        const actualStartsIn = contestRef.current?.startTime
+          ? Math.max(0, Math.floor((new Date(contestRef.current.startTime).getTime() - nowMs) / 1000))
+          : Math.max(0, contestStartsInRef.current - 1);
 
-          if (actualStartsIn <= 0) {
-            clearInterval(startTimer);
-            if (prev > 0) {
-              handleContestStarted();
-            }
-            return 0;
-          }
-          return actualStartsIn;
-        });
+        setContestStartsIn(actualStartsIn);
+        contestStartsInRef.current = actualStartsIn;
+
+        if (actualStartsIn <= 0) {
+          clearInterval(startTimer);
+          handleContestStarted();
+        }
       }, 1000);
 
       const statusPollTimer = setInterval(async () => {
@@ -1038,7 +1061,13 @@ export const StudentProblemWorkspace = ({
                 if (contestStartsInRef.current > 0) {
                   handleContestStarted();
                 } else if (currentC.endTime) {
-                  contestEndTimeRef.current = new Date(currentC.endTime);
+                  const newEnd = new Date(currentC.endTime);
+                  if (Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
+                    contestEndTimeRef.current = newEnd;
+                  }
+                }
+                if (currentC.problems && currentC.problems.length > 0) {
+                  setCurrentContestData(prev => ({ ...prev, ...currentC }));
                 }
               }
             }
@@ -1269,6 +1298,8 @@ export const StudentProblemWorkspace = ({
         fontFamily: 'IBM Plex Sans, sans-serif',
         overflowY: 'auto'
       }}>
+        {/* Top hover barrier to prevent browser exit overlay */}
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{
             display: 'inline-flex',
@@ -1555,9 +1586,37 @@ export const StudentProblemWorkspace = ({
     );
   }
 
-  const activeProblemsList = contestMode && contest?.problems
-    ? contest.problems
-    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
+  const activeProblemsList = React.useMemo(() => {
+    let list = [];
+    if (contestMode) {
+      const cProbs = currentContestData?.problems || contest?.problems;
+      if (Array.isArray(cProbs) && cProbs.length > 0) {
+        list = cProbs.map((p, idx) => {
+          if (typeof p === 'string') {
+            const found = (allProblems || []).concat(practiceProblemsList || []).find(
+              q => String(q._id) === p || String(q.id) === p || q.slug === p
+            );
+            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
+          } else if (p && typeof p === 'object') {
+            if (!p.title || p.title === p._id || p.title === p.slug) {
+              const pId = p._id || p.id || p.slug;
+              const found = (allProblems || []).concat(practiceProblemsList || []).find(
+                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
+              );
+              if (found) return { ...found, ...p };
+            }
+            return p;
+          }
+          return p;
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
+    }
+    return list;
+  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems]);
   
   const getProblemIdentifier = (p) => {
     if (!p) return '';
@@ -1623,6 +1682,8 @@ export const StudentProblemWorkspace = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
+      {/* Chromium Top Fullscreen Barrier to suppress browser exit pill */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
       {/* Top-Right Real-Time Contest Timer Toast Notification */}
       {timerToast && (
         <div

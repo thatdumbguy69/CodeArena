@@ -440,13 +440,14 @@ const getUserSubmissions = async (req, res) => {
       const submissions = await Submission.find(filter)
         .populate('user', 'name teamName email')
         .populate('question', 'title difficulty points')
+        .populate('contest', 'title slug')
         .sort({ createdAt: -1 })
         .limit(200)
         .lean();
 
       return res.json({ submissions });
     } else {
-      let filterSubmissions = [...inMemoryStore.submissions];
+      let filterSubmissions = [...(inMemoryStore.submissions || [])];
       if (req.user.role !== 'admin') {
         filterSubmissions = filterSubmissions.filter(s => String(s.user?._id || s.user) === String(userId));
       }
@@ -457,7 +458,7 @@ const getUserSubmissions = async (req, res) => {
         filterSubmissions = filterSubmissions.filter(s => String(s.contest?._id || s.contest) === String(contestId));
       }
 
-      // Populate user and question if needed
+      // Populate user, question, and contest if needed
       const populated = filterSubmissions.map(s => {
         const u = typeof s.user === 'object' && s.user !== null
           ? s.user
@@ -465,11 +466,15 @@ const getUserSubmissions = async (req, res) => {
         const q = typeof s.question === 'object' && s.question !== null
           ? s.question
           : (inMemoryStore.questions || []).find(qst => String(qst._id) === String(s.question));
+        const c = typeof s.contest === 'object' && s.contest !== null
+          ? s.contest
+          : (inMemoryStore.contests || []).find(cnt => String(cnt._id) === String(s.contest));
 
         return {
           ...s,
           user: u ? { _id: u._id, name: u.name, teamName: u.teamName, email: u.email } : s.user,
-          question: q ? { _id: q._id, title: q.title, difficulty: q.difficulty, points: q.points } : s.question
+          question: q ? { _id: q._id, title: q.title, difficulty: q.difficulty, points: q.points } : s.question,
+          contest: c ? { _id: c._id, title: c.title, slug: c.slug } : s.contest
         };
       });
 

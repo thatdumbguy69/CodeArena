@@ -28,7 +28,9 @@ export const ContestLeaderboard = ({
   onSearchChange,
   searchVal,
   loading = false,
-  emptyMessage = "No leaderboard rankings recorded yet."
+  emptyMessage = "No leaderboard rankings recorded yet.",
+  contestId = null,
+  onViewSubmissions = null
 }) => {
   const [internalSearch, setInternalSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
@@ -368,18 +370,61 @@ export const ContestLeaderboard = ({
                                     return (
                                       <tr key={pIdx} style={{ borderBottom: pIdx === problemTimes.length - 1 ? 'none' : '1px solid #F9FAFB' }}>
                                         <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600, color: '#111827' }}>
-                                          {pt.title || `Problem ${pIdx + 1}`}
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                            <span>{pt.title || `Problem ${pIdx + 1}`}</span>
+                                            {onViewSubmissions && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onViewSubmissions(contestId || row.contestId, pt.qId || pt._id, row.id || row._id)}
+                                                style={{
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '0.25rem',
+                                                  padding: '0.15rem 0.45rem',
+                                                  borderRadius: '4px',
+                                                  border: '1px solid #BFDBFE',
+                                                  background: '#EFF6FF',
+                                                  color: '#1D4ED8',
+                                                  fontSize: '0.72rem',
+                                                  fontWeight: 700,
+                                                  cursor: 'pointer',
+                                                  transition: 'all 0.15s ease'
+                                                }}
+                                                title="View submissions for this problem / contest"
+                                              >
+                                                View Submission
+                                              </button>
+                                            )}
+                                          </div>
                                         </td>
                                         <td style={{ padding: '0.5rem 0.6rem' }}>
-                                          {isSolved ? (
-                                            <span style={{ color: '#166534', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                              <CheckCircle size={13} color="#166534" /> Solved
-                                            </span>
-                                          ) : (
-                                            <span style={{ color: '#DC2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                              <XCircle size={13} color="#DC2626" /> {pt.verdict && pt.verdict !== 'Unattempted' ? pt.verdict : 'Not Solved'}
-                                            </span>
-                                          )}
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                                            {isSolved ? (
+                                              <span style={{ color: '#166534', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                <CheckCircle size={13} color="#166534" /> Solved
+                                              </span>
+                                            ) : (
+                                              <span style={{ color: '#DC2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                <XCircle size={13} color="#DC2626" /> {pt.verdict && pt.verdict !== 'Unattempted' ? pt.verdict : 'Not Solved'}
+                                              </span>
+                                            )}
+                                            {pt.language && (
+                                              <span style={{
+                                                padding: '0.1rem 0.4rem',
+                                                borderRadius: '4px',
+                                                background: '#F1F5F9',
+                                                border: '1px solid #E2E8F0',
+                                                color: '#475569',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.3px',
+                                                fontFamily: 'monospace'
+                                              }}>
+                                                {pt.language}
+                                              </span>
+                                            )}
+                                          </div>
                                         </td>
                                         <td style={{ padding: '0.5rem 0.6rem', textAlign: 'right', fontWeight: 700, color: '#2563EB' }}>
                                           {pt.score !== undefined ? `${pt.score} pts` : '0 pts'}

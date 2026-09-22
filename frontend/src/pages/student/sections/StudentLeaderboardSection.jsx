@@ -7,7 +7,8 @@ import { useSocket } from '../../../context/SocketContext';
 export const StudentLeaderboardSection = ({
   contests = [],
   currentUser,
-  initialContestId = null
+  initialContestId = null,
+  onViewSubmissions = null
 }) => {
   const { socket, joinContest } = useSocket();
 
@@ -151,6 +152,8 @@ export const StudentLeaderboardSection = ({
         currentUserId={currentUser?.id || currentUser?._id}
         currentUserEmail={currentUser?.email}
         emptyMessage="No candidate rankings recorded yet."
+        contestId={selectedContestId}
+        onViewSubmissions={onViewSubmissions}
       />
     </div>
   );

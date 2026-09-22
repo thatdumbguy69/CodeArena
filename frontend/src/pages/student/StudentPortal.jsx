@@ -46,6 +46,7 @@ export const StudentPortal = ({
   });
 
   const [leaderboardContestId, setLeaderboardContestId] = useState(null);
+  const [submissionsContestFilter, setSubmissionsContestFilter] = useState('all');
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -509,6 +510,8 @@ export const StudentPortal = ({
           {activeTab === 'submissions' && (
             <StudentSubmissionsSection
               submissions={submissions}
+              contests={contests}
+              initialContestFilter={submissionsContestFilter}
             />
           )}
 
@@ -517,6 +520,14 @@ export const StudentPortal = ({
               contests={contests}
               currentUser={user}
               initialContestId={leaderboardContestId}
+              onViewSubmissions={(targetContestId) => {
+                if (targetContestId) {
+                  setSubmissionsContestFilter(String(targetContestId));
+                } else {
+                  setSubmissionsContestFilter('all');
+                }
+                setActiveTab('submissions');
+              }}
             />
           )}
 
