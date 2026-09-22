@@ -359,6 +359,9 @@ export const ContestLeaderboard = ({
                                     <th style={{ padding: '0.4rem 0.6rem' }}>Status</th>
                                     <th style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>Score / Points</th>
                                     <th style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>Time Taken</th>
+                                    {onViewSubmissions && (
+                                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', width: '130px' }}>Action</th>
+                                    )}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -370,32 +373,7 @@ export const ContestLeaderboard = ({
                                     return (
                                       <tr key={pIdx} style={{ borderBottom: pIdx === problemTimes.length - 1 ? 'none' : '1px solid #F9FAFB' }}>
                                         <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600, color: '#111827' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                                            <span>{pt.title || `Problem ${pIdx + 1}`}</span>
-                                            {onViewSubmissions && (
-                                              <button
-                                                type="button"
-                                                onClick={() => onViewSubmissions(contestId || row.contestId, pt.qId || pt._id, row.id || row._id)}
-                                                style={{
-                                                  display: 'inline-flex',
-                                                  alignItems: 'center',
-                                                  gap: '0.25rem',
-                                                  padding: '0.15rem 0.45rem',
-                                                  borderRadius: '4px',
-                                                  border: '1px solid #BFDBFE',
-                                                  background: '#EFF6FF',
-                                                  color: '#1D4ED8',
-                                                  fontSize: '0.72rem',
-                                                  fontWeight: 700,
-                                                  cursor: 'pointer',
-                                                  transition: 'all 0.15s ease'
-                                                }}
-                                                title="View submissions for this problem / contest"
-                                              >
-                                                View Submission
-                                              </button>
-                                            )}
-                                          </div>
+                                          <span>{pt.title || `Problem ${pIdx + 1}`}</span>
                                         </td>
                                         <td style={{ padding: '0.5rem 0.6rem' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -432,6 +410,31 @@ export const ContestLeaderboard = ({
                                         <td style={{ padding: '0.5rem 0.6rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: '#374151' }}>
                                           {pt.formatted || (pt.seconds !== null && pt.seconds !== undefined ? `${pt.seconds}s` : 'N/A')}
                                         </td>
+                                        {onViewSubmissions && (
+                                          <td style={{ padding: '0.5rem 0.6rem', textAlign: 'center' }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => onViewSubmissions(contestId || row.contestId, pt.qId || pt._id, row.id || row._id)}
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.25rem',
+                                                padding: '0.2rem 0.55rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid #BFDBFE',
+                                                background: '#EFF6FF',
+                                                color: '#1D4ED8',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease'
+                                              }}
+                                              title="View submissions for this problem / contest"
+                                            >
+                                              View Submission
+                                            </button>
+                                          </td>
+                                        )}
                                       </tr>
                                     );
                                   })}

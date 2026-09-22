@@ -962,11 +962,16 @@ export const StudentProblemWorkspace = ({
             const first = freshProblems[0];
             const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
             await fetchProblemDetails(firstSlug);
+          } else {
+            await fetchProblemDetails();
           }
         }
       } catch (err) {
         console.error('Error unlocking contest questions:', err);
+        await fetchProblemDetails();
       }
+    } else {
+      await fetchProblemDetails();
     }
     armProctoring();
   };
@@ -1088,10 +1093,17 @@ export const StudentProblemWorkspace = ({
     if (typeof slugStr === 'object' && slugStr !== null) {
       slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
     }
-    if (!slugStr && contestMode && contest?.problems && contest.problems.length > 0) {
-      const first = contest.problems[0];
-      slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+
+    if (slugStr === 'contest-lobby' || !slugStr) {
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
+      if (contestProblems && contestProblems.length > 0) {
+        const first = contestProblems[0];
+        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+      }
     }
+
     if (!slugStr) return;
 
     try {
@@ -1100,29 +1112,36 @@ export const StudentProblemWorkspace = ({
 
       let data = null;
 
-      if (contestMode && contest?.problems) {
-        const matchingContestProb = contest.problems.find(p => {
-          if (!p || typeof p !== 'object') return false;
-          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr);
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems || []);
+
+      if (contestProblems.length > 0) {
+        const matchingContestProb = contestProblems.find(p => {
+          if (!p) return false;
+          if (typeof p === 'string') return p === slugStr;
+          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
         });
-        if (matchingContestProb && (matchingContestProb.sampleTestCases || matchingContestProb.testCases || matchingContestProb.description)) {
+        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
           data = matchingContestProb;
         }
       }
 
-      try {
-        const res = await api.get(`/questions/${slugStr}`);
-        if (res.data?.question || res.data) {
-          data = res.data.question || res.data;
-        }
-      } catch (e) {
-        console.warn('Direct problem fetch fallback:', e);
-        if (!data) {
-          const listRes = await api.get('/questions').catch(() => null);
-          const questionsList = listRes?.data?.questions || [];
-          if (questionsList.length > 0) {
-            data = questionsList[0];
+      if (!data && slugStr && slugStr !== 'contest-lobby') {
+        try {
+          const res = await api.get(`/questions/${slugStr}`);
+          if (res.data?.question || res.data) {
+            data = res.data.question || res.data;
           }
+        } catch (e) {
+          console.warn('Direct problem fetch fallback:', e);
+        }
+      }
+
+      if (!data) {
+        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
+        if (pool.length > 0) {
+          data = pool.find(q => q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr)) || pool[0];
         }
       }
 
@@ -1813,10 +1832,10 @@ export const StudentProblemWorkspace = ({
             borderRadius: '4px',
             fontSize: '0.72rem',
             fontWeight: 700,
-            background: question.difficulty === 'Easy' ? '#DCFCE7' : (question.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'),
-            color: question.difficulty === 'Easy' ? '#15803D' : (question.difficulty === 'Medium' ? '#D97706' : '#B91C1C')
+            background: question?.difficulty === 'Easy' ? '#DCFCE7' : (question?.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'),
+            color: question?.difficulty === 'Easy' ? '#15803D' : (question?.difficulty === 'Medium' ? '#D97706' : '#B91C1C')
           }}>
-            {question.difficulty || 'Medium'}
+            {question?.difficulty || 'Medium'}
           </span>
         </div>
 
@@ -2071,34 +2090,34 @@ export const StudentProblemWorkspace = ({
           </div>
 
           <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-ink)' }}>
-            {question.title}
+            {question?.title || 'Problem'}
           </h2>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--text-slate)' }}>
-            <span>Points: <strong style={{ color: 'var(--accent-blue)' }}>{question.points || 100} pts</strong></span>
-            <span>Time Limit: <strong>{question.timeLimit || 2000}ms</strong></span>
-            <span>Memory Limit: <strong>{question.memoryLimit || 256}MB</strong></span>
+            <span>Points: <strong style={{ color: 'var(--accent-blue)' }}>{question?.points || 100} pts</strong></span>
+            <span>Time Limit: <strong>{question?.timeLimit || 2000}ms</strong></span>
+            <span>Memory Limit: <strong>{question?.memoryLimit || 256}MB</strong></span>
           </div>
 
           <div style={{ marginBottom: '1.5rem', lineHeight: 1.6, fontSize: '0.92rem', color: 'var(--text-ink)' }}>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{question.description}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{question?.description || 'Problem statement loading...'}</p>
           </div>
 
-          {question.inputFormat && (
+          {question?.inputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Input Format (STDIN)</h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.inputFormat}</p>
             </div>
           )}
 
-          {question.outputFormat && (
+          {question?.outputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Output Format (STDOUT)</h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.outputFormat}</p>
             </div>
           )}
 
-          {question.constraints && (
+          {question?.constraints && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Constraints</h4>
               <pre style={{

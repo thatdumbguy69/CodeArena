@@ -222,8 +222,9 @@ const getQuestionByIdOrSlug = async (req, res) => {
         });
 
         const isUpcoming = upcomingContestDocs.some(c => {
+          if (c.status === 'Active' || c.status === 'Live' || c.status === 'Ended') return false;
           const start = c.startTime ? new Date(c.startTime) : new Date(c.createdAt || now);
-          return now < start;
+          return (now.getTime() + 15000) < start.getTime();
         });
 
         if (isUpcoming) {
@@ -240,7 +241,7 @@ const getQuestionByIdOrSlug = async (req, res) => {
           const hasActiveOrEndedContest = contestDocs.some(c => {
             if (c.status === 'Ended' || c.status === 'Active' || c.status === 'Live') return true;
             const start = c.startTime ? new Date(c.startTime) : new Date(new Date(c.createdAt || now).getTime());
-            return now >= start;
+            return (now.getTime() + 15000) >= start.getTime();
           });
 
           if (!hasActiveOrEndedContest) {
@@ -270,9 +271,9 @@ const getQuestionByIdOrSlug = async (req, res) => {
         const isUpcoming = (inMemoryStore.contests || []).some(c => {
           const isProblemInContest = (c.problems || []).some(p => String(p._id || p.slug || p) === String(question._id) || String(p.slug || p) === question.slug);
           if (!isProblemInContest) return false;
-          if (c.status === 'Upcoming') return true;
+          if (c.status === 'Ended' || c.status === 'Active' || c.status === 'Live') return false;
           const start = c.startTime ? new Date(c.startTime) : new Date(c.createdAt || now);
-          return now < start;
+          return (now.getTime() + 15000) < start.getTime();
         });
 
         if (isUpcoming) {
@@ -287,7 +288,7 @@ const getQuestionByIdOrSlug = async (req, res) => {
             if (!isProblemInContest) return false;
             if (c.status === 'Ended' || c.status === 'Active' || c.status === 'Live') return true;
             const start = c.startTime ? new Date(c.startTime) : new Date(c.createdAt || now);
-            return now >= start;
+            return (now.getTime() + 15000) >= start.getTime();
           });
 
           if (!hasActiveOrEndedContest) {

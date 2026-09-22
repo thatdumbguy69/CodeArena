@@ -32,7 +32,7 @@ const computeContestRealtime = (contestDoc) => {
   if (c.status === 'Ended') {
     computedStatus = 'Ended';
     c.remainingSecs = 0;
-  } else if (now < start) {
+  } else if ((now.getTime() + 5000) < start.getTime()) {
     computedStatus = 'Upcoming';
     c.remainingSecs = durationMins * 60;
   } else if (now >= end) {
