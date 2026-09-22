@@ -1,7 +1,10 @@
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const Redis = require('ioredis');
+const jwt = require('jsonwebtoken');
 const { REDIS_CONFIG, getIsRedisAvailable } = require('../config/redis');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'codearena_super_secret_jwt_key_2026';
 
 let io = null;
 
@@ -31,12 +34,35 @@ const init = (httpServer) => {
     }
   }
 
+  // Socket.IO authentication middleware
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        socket.data.user = decoded;
+        socket.data.isAdmin = decoded.role === 'admin';
+      } catch (e) {
+        socket.data.user = null;
+        socket.data.isAdmin = false;
+      }
+    }
+    next();
+  });
+
   io.on('connection', (socket) => {
+    const isSocketAdmin = () => {
+      return !!(socket.data?.isAdmin || socket.rooms.has('admin_proctoring'));
+    };
+
     // Participant / Client joins a contest room & user room
     socket.on('join_contest', (data) => {
-      const { contestId, userId, userName, teamName, email } = data || {};
+      const { contestId, contestSlug, userId, userName, teamName, email } = data || {};
       if (contestId) {
         socket.join(`contest_${contestId}`);
+      }
+      if (contestSlug && contestSlug !== contestId) {
+        socket.join(`contest_${contestSlug}`);
       }
       if (userId) {
         socket.join(`user_${userId}`);
@@ -56,8 +82,21 @@ const init = (httpServer) => {
     });
 
     // Admin joins the live proctoring hub room
-    socket.on('join_admin_proctoring', () => {
-      socket.join('admin_proctoring');
+    socket.on('join_admin_proctoring', (data) => {
+      const token = data?.token || socket.handshake.auth?.token;
+      if (token && !socket.data?.isAdmin) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          if (decoded.role === 'admin') {
+            socket.data.isAdmin = true;
+            socket.data.user = decoded;
+          }
+        } catch (e) {}
+      }
+
+      if (socket.data?.isAdmin) {
+        socket.join('admin_proctoring');
+      }
     });
 
     // Student reports focus loss / tab blur in real-time
@@ -99,35 +138,27 @@ const init = (httpServer) => {
       }
     });
 
-    // Admin broadcasts timer adjustment to contest room
+    // Admin broadcasts timer adjustment to contest room (Authorized Admin Only)
     socket.on('admin:timer_sync', (data) => {
+      if (!isSocketAdmin()) return;
       const { contestId, remainingSecs, extraMinutes } = data || {};
       if (contestId) {
-        const payload = {
-          contestId,
-          remainingSecs,
-          extraMinutes: extraMinutes || 0,
-          timestamp: new Date()
-        };
-        io.to(`contest_${contestId}`).emit('contest:timer_sync', payload);
-        io.emit('contest:timer_sync', payload);
+        emitTimerSync(contestId, remainingSecs, extraMinutes);
       }
     });
 
-    // Admin broadcasts end contest / force submit
+    // Admin broadcasts end contest / force submit (Authorized Admin Only)
     socket.on('admin:end_contest', (data) => {
+      if (!isSocketAdmin()) return;
       const { contestId } = data || {};
       if (contestId) {
-        io.to(`contest_${contestId}`).emit('contest:force_submit', {
-          contestId,
-          timestamp: new Date()
-        });
-        io.emit('contest:ended', { contestId });
+        emitContestEnded(contestId);
       }
     });
 
-    // Admin triggers manual student disqualification
+    // Admin triggers manual student disqualification (Authorized Admin Only)
     socket.on('admin:disqualify_student', (data) => {
+      if (!isSocketAdmin()) return;
       const { contestId, userId, userName, teamName, email, reason } = data || {};
       const payload = {
         contestId,
@@ -145,8 +176,9 @@ const init = (httpServer) => {
       io.to('admin_proctoring').emit('proctoring:student_disqualified', payload);
     });
 
-    // Admin triggers student qualification / reinstatement
+    // Admin triggers student qualification / reinstatement (Authorized Admin Only)
     socket.on('admin:qualify_student', (data) => {
+      if (!isSocketAdmin()) return;
       const { contestId, userId, userName, teamName, note } = data || {};
       const payload = {
         contestId,
@@ -198,26 +230,52 @@ const emitToUser = (userId, event, payload) => {
   io.to(`user_${userId}`).emit(event, { ...payload, timestamp: new Date() });
 };
 
-// Broadcasts contest timer sync or time extension
-const emitTimerSync = (contestId, remainingSecs, extraMinutes = 0) => {
+// Broadcasts contest timer sync or time extension scoped to contest room
+const emitTimerSync = (contestId, remainingSecs, extraMinutes = 0, altId = null) => {
   if (!io || !contestId) return;
+  const cId = String(contestId);
   const payload = {
-    contestId,
+    contestId: cId,
     remainingSecs,
     extraMinutes: extraMinutes || 0,
     timestamp: new Date()
   };
-  io.to(`contest_${contestId}`).emit('contest:timer_sync', payload);
-  io.emit('contest:timer_sync', payload);
+  io.to(`contest_${cId}`).emit('contest:timer_sync', payload);
+  if (altId && String(altId) !== cId) {
+    io.to(`contest_${String(altId)}`).emit('contest:timer_sync', payload);
+  }
 };
 
-// Broadcasts contest ended / force submit to all participants in contest
-const emitContestEnded = (contestId) => {
+// Broadcasts contest ended / force submit scoped to target contest room
+const emitContestEnded = (contestId, altId = null) => {
   if (!io || !contestId) return;
-  io.to(`contest_${contestId}`).emit('contest:force_submit', {
-    contestId,
-    timestamp: new Date()
-  });
+  const cId = String(contestId);
+  const payload = { contestId: cId, timestamp: new Date() };
+  const timerPayload = { contestId: cId, remainingSecs: 0, extraMinutes: 0, timestamp: new Date() };
+
+  io.to(`contest_${cId}`).emit('contest:force_submit', payload);
+  io.to(`contest_${cId}`).emit('contest:ended', payload);
+  io.to(`contest_${cId}`).emit('contest:timer_sync', timerPayload);
+
+  if (altId && String(altId) !== cId) {
+    const aId = String(altId);
+    io.to(`contest_${aId}`).emit('contest:force_submit', payload);
+    io.to(`contest_${aId}`).emit('contest:ended', payload);
+    io.to(`contest_${aId}`).emit('contest:timer_sync', timerPayload);
+  }
+};
+
+// Broadcasts newly created or updated contest across all connected clients
+const emitContestPublished = (contest) => {
+  if (!io) return;
+  io.emit('contest:published', { contest, timestamp: new Date() });
+  io.emit('contest:global_refresh', { timestamp: new Date() });
+};
+
+// Broadcasts global contest refresh trigger
+const emitGlobalRefresh = () => {
+  if (!io) return;
+  io.emit('contest:global_refresh', { timestamp: new Date() });
 };
 
 module.exports = {
@@ -227,5 +285,7 @@ module.exports = {
   emitToProctoring,
   emitToUser,
   emitTimerSync,
-  emitContestEnded
+  emitContestEnded,
+  emitContestPublished,
+  emitGlobalRefresh
 };

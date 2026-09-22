@@ -3,7 +3,7 @@ const Question = require('../models/Question');
 const ContestSession = require('../models/ContestSession');
 const SystemSetting = require('../models/SystemSetting');
 const { getIsConnected, inMemoryStore } = require('../config/db');
-const { emitTimerSync } = require('../services/socketService');
+const { emitTimerSync, emitContestEnded, emitContestPublished, emitGlobalRefresh } = require('../services/socketService');
 
 const slugify = (text) => {
   return text
@@ -29,16 +29,21 @@ const computeContestRealtime = (contestDoc) => {
   c.duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
 
   let computedStatus = c.status;
-  if (now < start) {
+  if (c.status === 'Ended') {
+    computedStatus = 'Ended';
+    c.remainingSecs = 0;
+  } else if (now < start) {
     computedStatus = 'Upcoming';
+    c.remainingSecs = durationMins * 60;
   } else if (now >= end) {
     computedStatus = 'Ended';
+    c.remainingSecs = 0;
   } else {
     computedStatus = 'Active';
+    c.remainingSecs = Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
   }
 
   c.status = computedStatus;
-  c.remainingSecs = Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
   c.startsInSecs = Math.max(0, Math.floor((start.getTime() - now.getTime()) / 1000));
 
   return c;
@@ -217,7 +222,7 @@ const createContest = async (req, res) => {
       return res.status(400).json({ message: 'Contest title is required' });
     }
 
-    let effectiveMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 3) : undefined;
+    let effectiveMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 2) : undefined;
     let effectiveAutoDisq = autoDisqualify !== undefined ? Boolean(autoDisqualify) : undefined;
 
     if (effectiveMaxBlurs === undefined || effectiveAutoDisq === undefined) {
@@ -225,16 +230,16 @@ const createContest = async (req, res) => {
         if (getIsConnected()) {
           const sysSetting = await SystemSetting.findOne({ key: 'global_platform_settings' });
           if (sysSetting) {
-            if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = sysSetting.maxAllowedBlurs || 3;
+            if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = sysSetting.maxAllowedBlurs || 2;
             if (effectiveAutoDisq === undefined) effectiveAutoDisq = sysSetting.autoDisqualify !== false;
           }
         } else if (inMemoryStore.settings) {
-          if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = inMemoryStore.settings.maxAllowedBlurs || 3;
+          if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = inMemoryStore.settings.maxAllowedBlurs || 2;
           if (effectiveAutoDisq === undefined) effectiveAutoDisq = inMemoryStore.settings.autoDisqualify !== false;
         }
       } catch (e) {}
     }
-    if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = 3;
+    if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = 2;
     if (effectiveAutoDisq === undefined) effectiveAutoDisq = true;
 
     const slug = slugify(title) + '-' + Math.floor(Math.random()*1000);
@@ -268,8 +273,11 @@ const createContest = async (req, res) => {
         autoDisqualify: effectiveAutoDisq,
         createdBy: req.user.id
       });
+      bustContestsCache();
       const populated = await Contest.findById(contest._id).populate('problems');
-      return res.status(201).json({ message: 'Contest hosted successfully', contest: computeContestRealtime(populated) });
+      const realtimeContest = computeContestRealtime(populated);
+      emitContestPublished(realtimeContest);
+      return res.status(201).json({ message: 'Contest hosted successfully', contest: realtimeContest });
     } else {
       // In-Memory store
       if (!inMemoryStore.contests) inMemoryStore.contests = [];
@@ -298,7 +306,9 @@ const createContest = async (req, res) => {
 
       inMemoryStore.contests.push(memContest);
       bustContestsCache();
-      return res.status(201).json({ message: 'Contest hosted successfully', contest: computeContestRealtime(memContest) });
+      const realtimeContest = computeContestRealtime(memContest);
+      emitContestPublished(realtimeContest);
+      return res.status(201).json({ message: 'Contest hosted successfully', contest: realtimeContest });
     }
   } catch (err) {
     console.error('Create contest error:', err);
@@ -310,10 +320,10 @@ const createContest = async (req, res) => {
 const updateContest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { timeAdjustmentMins, startTime, duration, endTime, ...otherFields } = req.body;
+    const { timeAdjustmentMins, startTime, duration, endTime, action, ...otherFields } = req.body;
 
     if (otherFields.maxAllowedBlurs !== undefined) {
-      otherFields.maxAllowedBlurs = Math.max(1, parseInt(otherFields.maxAllowedBlurs, 10) || 3);
+      otherFields.maxAllowedBlurs = Math.max(1, parseInt(otherFields.maxAllowedBlurs, 10) || 2);
     }
     if (otherFields.autoDisqualify !== undefined) {
       otherFields.autoDisqualify = Boolean(otherFields.autoDisqualify);
@@ -323,39 +333,62 @@ const updateContest = async (req, res) => {
       let contest = await Contest.findById(id);
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
-      const currentStart = startTime ? new Date(startTime) : (contest.startTime || new Date());
-      contest.startTime = currentStart;
+      const now = new Date();
 
-      if (timeAdjustmentMins !== undefined) {
-        const currentEnd = contest.endTime ? new Date(contest.endTime) : new Date(currentStart.getTime() + (contest.duration || 60) * 60000);
-        const newEnd = new Date(currentEnd.getTime() + parseInt(timeAdjustmentMins, 10) * 60000);
+      if (action === 'start_now' || (otherFields.status === 'Active' && contest.status !== 'Active')) {
+        const dur = parseInt(duration || contest.duration, 10) || 60;
+        contest.startTime = now;
+        contest.endTime = new Date(now.getTime() + dur * 60000);
+        contest.duration = dur;
+        contest.status = 'Active';
+      } else if (otherFields.status === 'Ended' || otherFields.remainingSecs === 0) {
+        contest.endTime = now;
+        contest.status = 'Ended';
+        const currentStart = contest.startTime || now;
+        contest.duration = Math.max(1, Math.round((now.getTime() - new Date(currentStart).getTime()) / 60000));
+      } else if (timeAdjustmentMins !== undefined) {
+        const adj = parseInt(timeAdjustmentMins, 10) || 0;
+        const currentEnd = contest.endTime ? new Date(contest.endTime) : new Date(now.getTime() + (contest.duration || 60) * 60000);
+        const baseEnd = currentEnd.getTime() < now.getTime() ? now : currentEnd;
+        const newEnd = new Date(baseEnd.getTime() + adj * 60000);
         contest.endTime = newEnd;
-        contest.duration = Math.max(1, Math.round((newEnd.getTime() - currentStart.getTime()) / 60000));
-      } else if (endTime) {
-        contest.endTime = new Date(endTime);
-        contest.duration = Math.max(1, Math.round((contest.endTime.getTime() - currentStart.getTime()) / 60000));
-      } else if (duration) {
-        contest.duration = parseInt(duration, 10);
-        contest.endTime = new Date(currentStart.getTime() + contest.duration * 60000);
+        if (newEnd > now) {
+          contest.status = 'Active';
+        }
+        const startMs = contest.startTime ? new Date(contest.startTime).getTime() : now.getTime();
+        contest.duration = Math.max(1, Math.round((newEnd.getTime() - startMs) / 60000));
+      } else {
+        const currentStart = startTime ? new Date(startTime) : (contest.startTime || now);
+        contest.startTime = currentStart;
+
+        if (endTime) {
+          contest.endTime = new Date(endTime);
+          contest.duration = Math.max(1, Math.round((contest.endTime.getTime() - currentStart.getTime()) / 60000));
+        } else if (duration) {
+          contest.duration = parseInt(duration, 10);
+          contest.endTime = new Date(currentStart.getTime() + contest.duration * 60000);
+        }
+
+        if (contest.status !== 'Ended') {
+          if (now < contest.startTime) contest.status = 'Upcoming';
+          else if (now >= contest.endTime) contest.status = 'Ended';
+          else contest.status = 'Active';
+        }
       }
 
       Object.assign(contest, otherFields);
-
-      // Re-evaluate status
-      const now = new Date();
-      if (now < contest.startTime) contest.status = 'Upcoming';
-      else if (now >= contest.endTime) contest.status = 'Ended';
-      else contest.status = 'Active';
 
       await contest.save();
       bustContestsCache();
       const populated = await Contest.findById(contest._id).populate('problems');
       const realtimeContest = computeContestRealtime(populated);
+      emitContestPublished(realtimeContest);
 
-      if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
+      if (realtimeContest.status === 'Ended' || otherFields.status === 'Ended') {
+        emitContestEnded(contest._id, contest.slug);
+      } else {
         const remSecs = Math.max(0, Math.floor((new Date(realtimeContest.endTime).getTime() - Date.now()) / 1000));
-        emitTimerSync(contest._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
-        emitTimerSync(contest.slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(contest._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0, contest.slug);
       }
 
       return res.json({ message: 'Contest updated successfully', contest: realtimeContest });
@@ -365,36 +398,60 @@ const updateContest = async (req, res) => {
       if (idx === -1) return res.status(404).json({ message: 'Contest not found' });
 
       let c = list[idx];
-      const currentStart = startTime ? new Date(startTime) : (c.startTime || new Date());
-      c.startTime = currentStart;
+      const now = new Date();
 
-      if (timeAdjustmentMins !== undefined) {
-        const currentEnd = c.endTime ? new Date(c.endTime) : new Date(currentStart.getTime() + (c.duration || 60) * 60000);
-        const newEnd = new Date(currentEnd.getTime() + parseInt(timeAdjustmentMins, 10) * 60000);
+      if (action === 'start_now' || (otherFields.status === 'Active' && c.status !== 'Active')) {
+        const dur = parseInt(duration || c.duration, 10) || 60;
+        c.startTime = now;
+        c.endTime = new Date(now.getTime() + dur * 60000);
+        c.duration = dur;
+        c.status = 'Active';
+      } else if (otherFields.status === 'Ended' || otherFields.remainingSecs === 0) {
+        c.endTime = now;
+        c.status = 'Ended';
+        const currentStart = c.startTime || now;
+        c.duration = Math.max(1, Math.round((now.getTime() - new Date(currentStart).getTime()) / 60000));
+      } else if (timeAdjustmentMins !== undefined) {
+        const adj = parseInt(timeAdjustmentMins, 10) || 0;
+        const currentEnd = c.endTime ? new Date(c.endTime) : new Date(now.getTime() + (c.duration || 60) * 60000);
+        const baseEnd = currentEnd.getTime() < now.getTime() ? now : currentEnd;
+        const newEnd = new Date(baseEnd.getTime() + adj * 60000);
         c.endTime = newEnd;
-        c.duration = Math.max(1, Math.round((newEnd.getTime() - currentStart.getTime()) / 60000));
-      } else if (endTime) {
-        c.endTime = new Date(endTime);
-        c.duration = Math.max(1, Math.round((c.endTime.getTime() - currentStart.getTime()) / 60000));
-      } else if (duration) {
-        c.duration = parseInt(duration, 10);
-        c.endTime = new Date(currentStart.getTime() + c.duration * 60000);
+        if (newEnd > now) {
+          c.status = 'Active';
+        }
+        const startMs = c.startTime ? new Date(c.startTime).getTime() : now.getTime();
+        c.duration = Math.max(1, Math.round((newEnd.getTime() - startMs) / 60000));
+      } else {
+        const currentStart = startTime ? new Date(startTime) : (c.startTime || now);
+        c.startTime = currentStart;
+
+        if (endTime) {
+          c.endTime = new Date(endTime);
+          c.duration = Math.max(1, Math.round((c.endTime.getTime() - currentStart.getTime()) / 60000));
+        } else if (duration) {
+          c.duration = parseInt(duration, 10);
+          c.endTime = new Date(currentStart.getTime() + c.duration * 60000);
+        }
+
+        if (c.status !== 'Ended') {
+          if (now < c.startTime) c.status = 'Upcoming';
+          else if (now >= c.endTime) c.status = 'Ended';
+          else c.status = 'Active';
+        }
       }
 
       Object.assign(c, otherFields);
 
-      const now = new Date();
-      if (now < c.startTime) c.status = 'Upcoming';
-      else if (now >= c.endTime) c.status = 'Ended';
-      else c.status = 'Active';
-
       list[idx] = computeContestRealtime(c);
       bustContestsCache();
+      emitContestPublished(list[idx]);
 
-      if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
+      if (list[idx].status === 'Ended' || otherFields.status === 'Ended') {
+        emitContestEnded(list[idx]._id, list[idx].slug);
+      } else {
         const remSecs = Math.max(0, Math.floor((new Date(list[idx].endTime).getTime() - Date.now()) / 1000));
-        emitTimerSync(list[idx]._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
-        emitTimerSync(list[idx].slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(list[idx]._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0, list[idx].slug);
       }
 
       return res.json({ message: 'Contest updated successfully', contest: list[idx] });
@@ -424,6 +481,7 @@ const deleteContest = async (req, res) => {
       }
 
       bustContestsCache();
+      emitGlobalRefresh();
       return res.json({ message: 'Contest deleted successfully' });
     } else {
       if (inMemoryStore.contests) {
@@ -433,6 +491,7 @@ const deleteContest = async (req, res) => {
         inMemoryStore.contestSessions = inMemoryStore.contestSessions.filter(s => String(s.contest) !== String(id));
       }
       bustContestsCache();
+      emitGlobalRefresh();
       return res.json({ message: 'Contest deleted successfully' });
     }
   } catch (err) {
@@ -458,14 +517,6 @@ const startContestSession = async (req, res) => {
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
       const computed = computeContestRealtime(contest);
-      if (computed.status === 'Upcoming' && req.user?.role !== 'admin') {
-        return res.status(403).json({
-          message: `This contest has not started yet. Entry is permitted only once the contest starts at ${new Date(computed.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-          isUpcoming: true,
-          startTime: computed.startTime,
-          startsInSecs: computed.startsInSecs
-        });
-      }
 
       let session = await ContestSession.findOne({ user: userId, contest: contest._id });
 
@@ -481,25 +532,17 @@ const startContestSession = async (req, res) => {
         session = await ContestSession.create({
           user: userId,
           contest: contest._id,
-          startTime: new Date(),
+          startTime: computed.status === 'Upcoming' ? computed.startTime : new Date(),
           isFinished: false
         });
       }
 
-      return res.json({ session });
+      return res.json({ session, isUpcoming: computed.status === 'Upcoming', startsInSecs: computed.startsInSecs, startTime: computed.startTime });
     } else {
       const contest = inMemoryStore.contests.find(c => String(c._id) === id || c.slug === id);
       if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
       const computed = computeContestRealtime(contest);
-      if (computed.status === 'Upcoming' && req.user?.role !== 'admin') {
-        return res.status(403).json({
-          message: `This contest has not started yet. Entry is permitted only once the contest starts at ${new Date(computed.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-          isUpcoming: true,
-          startTime: computed.startTime,
-          startsInSecs: computed.startsInSecs
-        });
-      }
 
       if (!inMemoryStore.contestSessions) inMemoryStore.contestSessions = [];
 
@@ -518,13 +561,13 @@ const startContestSession = async (req, res) => {
           _id: 'mem_sess_' + Date.now(),
           user: userId,
           contest: contest._id,
-          startTime: new Date(),
+          startTime: computed.status === 'Upcoming' ? computed.startTime : new Date(),
           isFinished: false
         };
         inMemoryStore.contestSessions.push(session);
       }
 
-      return res.json({ session });
+      return res.json({ session, isUpcoming: computed.status === 'Upcoming', startsInSecs: computed.startsInSecs, startTime: computed.startTime });
     }
   } catch (err) {
     console.error('Start contest session error:', err);
@@ -852,7 +895,7 @@ const logAntiCheatEvent = async (req, res) => {
     }
     if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
-    const maxAllowedBlurs = contest.maxAllowedBlurs !== undefined ? Math.max(1, contest.maxAllowedBlurs) : 3;
+    const maxAllowedBlurs = contest.maxAllowedBlurs !== undefined ? Math.max(1, contest.maxAllowedBlurs) : 2;
     const autoDisqualify = contest.autoDisqualify !== undefined ? contest.autoDisqualify : true;
     let finalBlurCount = blurCount || 1;
     let isDisq = false;
@@ -963,7 +1006,7 @@ const getAllProctoringSummary = async (req, res) => {
         const u = session.user || {};
         const c = session.contest || {};
         const blurs = session.blurCount || 0;
-        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 3;
+        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 2;
         const autoDisq = c.autoDisqualify !== false;
         const isDisq = session.isDisqualified || (autoDisq && blurs >= maxBlurs);
 
@@ -991,7 +1034,7 @@ const getAllProctoringSummary = async (req, res) => {
         const u = (inMemoryStore.users || []).find(user => String(user._id) === String(session.user)) || {};
         const c = (inMemoryStore.contests || []).find(cnt => String(cnt._id) === String(session.contest)) || {};
         const blurs = session.blurCount || 0;
-        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 3;
+        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 2;
         const autoDisq = c.autoDisqualify !== false;
         const isDisq = session.isDisqualified || (autoDisq && blurs >= maxBlurs);
 

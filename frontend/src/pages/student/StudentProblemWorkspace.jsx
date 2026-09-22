@@ -83,9 +83,13 @@ export const StudentProblemWorkspace = ({
 
   const [contestCompleted, setContestCompleted] = useState(() => {
     if (!contestMode || !contest) return false;
+    const nowMs = Date.now();
+    const startMs = contest.startTime ? new Date(contest.startTime).getTime() : 0;
+    const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
+    const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
+    if (isUpcoming) return false;
     if (contest.status === 'Ended') return true;
-    if (contest.endTime && new Date(contest.endTime).getTime() <= Date.now()) return true;
-    if (contest.remainingSecs !== undefined && contest.remainingSecs <= 0 && contest.startsInSecs <= 0) return true;
+    if (endMs <= nowMs && startMs <= nowMs) return true;
     return false;
   });
 
@@ -134,6 +138,16 @@ export const StudentProblemWorkspace = ({
   useEffect(() => {
     if (!contestMode) return;
 
+    // Check for coordinator emergency refresh bypass
+    const isCoordinatorBypass = sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true';
+    if (isCoordinatorBypass) {
+      sessionStorage.removeItem('codearena_coordinator_bypass_refresh');
+      sessionStorage.removeItem(reloadFlagKey);
+      setSecurityAlert('🔑 Coordinator Emergency Reload applied. No integrity violation recorded.');
+      setTimeout(() => setSecurityAlert(null), 5000);
+      return;
+    }
+
     const isReload = (() => {
       try {
         const hasReloadFlag = !!sessionStorage.getItem(reloadFlagKey);
@@ -171,6 +185,8 @@ export const StudentProblemWorkspace = ({
     if (contestMode && contest) {
       const cId = contest._id || contest.id || contest.slug;
       joinContest(cId, {
+        contestId: cId,
+        contestSlug: contest.slug,
         userId: user?._id || user?.id,
         userName: user?.name,
         teamName: user?.teamName,
@@ -246,15 +262,22 @@ export const StudentProblemWorkspace = ({
       }
     };
 
-    const handleForceSubmit = () => {
+    const handleForceSubmit = (data) => {
+      if (!contestMode || !contest) return;
+      const incomingId = String(data?.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
+        return;
+      }
+      setContestTimeLeft(0);
       handleAutoSubmitContest();
     };
 
     const handleTimerSync = (data) => {
-      if (!data) return;
-      const myContestId = String(contest?._id || contest?.id || contest?.slug || '');
-      const incomingId = String(data.contestId || '');
-      if (incomingId && myContestId && incomingId !== myContestId && !myContestId.includes(incomingId) && !incomingId.includes(myContestId)) {
+      if (!data || !contestMode || !contest) return;
+      const incomingId = String(data.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
         return;
       }
 
@@ -269,14 +292,14 @@ export const StudentProblemWorkspace = ({
         if (extra !== undefined && extra !== null && Number(extra) !== 0) {
           const numExtra = Number(extra);
           if (numExtra > 0) {
-            msg = `⏱️ Contest Time Extended: +${numExtra} min${numExtra > 1 ? 's' : ''} added by Host Admin!`;
+            msg = `⏱️ Contest time has been increased by +${numExtra} min${numExtra > 1 ? 's' : ''} by Host Admin!`;
             tType = 'added';
           } else {
-            msg = `⏱️ Contest Time Reduced: ${Math.abs(numExtra)} min${Math.abs(numExtra) > 1 ? 's' : ''} deducted by Host Admin!`;
+            msg = `⏱️ Contest time has been decreased by ${Math.abs(numExtra)} min${Math.abs(numExtra) > 1 ? 's' : ''} by Host Admin!`;
             tType = 'reduced';
           }
         } else {
-          msg = `⏱️ Contest Timer Synchronized by Host Admin (${formatSecs(newRemSecs)} remaining)`;
+          msg = `⏱️ Contest duration updated: ${formatSecs(newRemSecs)} remaining`;
           tType = 'sync';
         }
 
@@ -330,8 +353,20 @@ export const StudentProblemWorkspace = ({
       setIsFullscreen(isFsNow);
 
       if (isFsNow) {
+        if (navigator.keyboard && navigator.keyboard.lock) {
+          navigator.keyboard.lock(['Escape']).catch(() => {});
+        }
         armProctoring();
       } else {
+        if (navigator.keyboard && navigator.keyboard.unlock) {
+          try { navigator.keyboard.unlock(); } catch (e) {}
+        }
+        if (sessionStorage.getItem('codearena_coordinator_bypass_exit_fs') === 'true') {
+          sessionStorage.removeItem('codearena_coordinator_bypass_exit_fs');
+          isProctoringArmedRef.current = false;
+          setSecurityAlert('🔑 Coordinator Emergency Exit Fullscreen applied. Proctoring is paused.');
+          return;
+        }
         if (contestMode && !contestCompletedRef.current && isProctoringArmedRef.current && contestStartsIn <= 0) {
           handleFocusLoss('Exited fullscreen mode');
         }
@@ -352,6 +387,11 @@ export const StudentProblemWorkspace = ({
       if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
       else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
       else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
+      }
+
       armProctoring();
       setFirstEntryModalOpen(false);
       setWarningModalOpen(false);
@@ -396,6 +436,7 @@ export const StudentProblemWorkspace = ({
   const questionRef = React.useRef(question);
   const contestRef = React.useRef(contest);
   const contestCompletedRef = React.useRef(contestCompleted);
+  const contestStartsInRef = React.useRef(contestStartsIn);
   const blurCountRef = React.useRef(blurCount);
   const antiCheatLogsRef = React.useRef(antiCheatLogs);
 
@@ -404,6 +445,7 @@ export const StudentProblemWorkspace = ({
   useEffect(() => { questionRef.current = question; }, [question]);
   useEffect(() => { contestRef.current = contest; }, [contest]);
   useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
+  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
   useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
   useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
 
@@ -536,12 +578,42 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert)
+    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert) + Hidden Coordinator Refresh
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
 
-      // Refresh blocking
+      // Hidden Coordinator Emergency Refresh: Ctrl + Alt + Shift + R OR Ctrl + Shift + F5
+      const isCoordinatorRefresh = 
+        (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'r') ||
+        (isCtrlOrCmd && e.shiftKey && (key === 'f5' || e.keyCode === 116));
+
+      if (isCoordinatorRefresh) {
+        e.preventDefault();
+        e.stopPropagation();
+        sessionStorage.setItem('codearena_coordinator_bypass_refresh', 'true');
+        sessionStorage.removeItem(reloadFlagKey);
+        window.location.reload();
+        return false;
+      }
+
+      // Hidden Coordinator Emergency Exit Fullscreen: Ctrl + Alt + Shift + X OR Ctrl + Shift + Esc
+      const isCoordinatorExitFs = 
+        (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'x') ||
+        (isCtrlOrCmd && e.shiftKey && key === 'escape');
+
+      if (isCoordinatorExitFs) {
+        e.preventDefault();
+        e.stopPropagation();
+        sessionStorage.setItem('codearena_coordinator_bypass_exit_fs', 'true');
+        isProctoringArmedRef.current = false;
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        setSecurityAlert('🔑 Coordinator Emergency Exit Fullscreen applied. Proctoring is paused.');
+        return false;
+      }
+
+      // Refresh blocking for students
       if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
         e.preventDefault();
         e.stopPropagation();
@@ -576,6 +648,9 @@ export const StudentProblemWorkspace = ({
 
     // 4. Beforeunload Warning & Reload Flag
     const handleBeforeUnload = (e) => {
+      if (sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true') {
+        return;
+      }
       if (!contestCompletedRef.current) {
         sessionStorage.setItem(reloadFlagKey, JSON.stringify({
           reloadedAt: Date.now(),
@@ -773,8 +848,9 @@ export const StudentProblemWorkspace = ({
 
   const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
     if (contestCompletedRef.current && !isDisqualified) return;
-    setContestCompleted(true);
     contestCompletedRef.current = true;
+    setContestCompleted(true);
+    isProctoringArmedRef.current = false;
 
     if (isDisqualified) {
       setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
@@ -825,6 +901,41 @@ export const StudentProblemWorkspace = ({
     fetchProblemDetails();
   }, [problemSlug]);
 
+  const handleContestStarted = async () => {
+    setContestStartsIn(0);
+    contestStartsInRef.current = 0;
+    const toastId = Date.now();
+    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
+    setTimeout(() => {
+      setTimerToast(p => (p?.id === toastId ? null : p));
+    }, 7000);
+
+    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
+    if (cId) {
+      try {
+        const res = await api.get(`/contests/${cId}`);
+        if (res.data?.contest) {
+          const freshContest = res.data.contest;
+          contestRef.current = freshContest;
+          if (freshContest.endTime) {
+            contestEndTimeRef.current = new Date(freshContest.endTime);
+            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
+            setContestTimeLeft(left);
+          }
+          const freshProblems = freshContest.problems || [];
+          if (freshProblems.length > 0) {
+            const first = freshProblems[0];
+            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+            await fetchProblemDetails(firstSlug);
+          }
+        }
+      } catch (err) {
+        console.error('Error unlocking contest questions:', err);
+      }
+    }
+    armProctoring();
+  };
+
   useEffect(() => {
     if (contestMode && contest) {
       if (contest.endTime) {
@@ -849,8 +960,15 @@ export const StudentProblemWorkspace = ({
 
       const timer = setInterval(() => {
         setContestTimeLeft(prev => {
+          const nowMs = Date.now();
+          const startMs = contestRef.current?.startTime ? new Date(contestRef.current.startTime).getTime() : 0;
+          if (startMs > nowMs || contestStartsInRef.current > 0) {
+            // Contest has not started yet; do not decrement remaining or auto-submit
+            return prev;
+          }
+
           const actualLeft = contestEndTimeRef.current
-            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - Date.now()) / 1000))
+            ? Math.max(0, Math.floor((contestEndTimeRef.current.getTime() - nowMs) / 1000))
             : Math.max(0, prev - 1);
 
           if (actualLeft <= 0) {
@@ -880,6 +998,9 @@ export const StudentProblemWorkspace = ({
 
           if (actualStartsIn <= 0) {
             clearInterval(startTimer);
+            if (prev > 0) {
+              handleContestStarted();
+            }
             return 0;
           }
           return actualStartsIn;
@@ -897,9 +1018,21 @@ export const StudentProblemWorkspace = ({
             const res = await api.get(`/contests/${cId}`);
             if (res.data?.contest) {
               const currentC = res.data.contest;
-              if (currentC.status === 'Ended' || currentC.remainingSecs <= 0) {
+              const nowMs = Date.now();
+              const startMs = currentC.startTime ? new Date(currentC.startTime).getTime() : 0;
+              const endMs = currentC.endTime ? new Date(currentC.endTime).getTime() : Infinity;
+              const isUpcoming = currentC.status === 'Upcoming' || startMs > nowMs;
+              const isTrulyEnded = !isUpcoming && (currentC.status === 'Ended' || endMs <= nowMs);
+
+              if (isTrulyEnded) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
+              } else if (!isUpcoming) {
+                if (contestStartsInRef.current > 0) {
+                  handleContestStarted();
+                } else if (currentC.endTime) {
+                  contestEndTimeRef.current = new Date(currentC.endTime);
+                }
               }
             }
           } catch (e) {}
@@ -1291,92 +1424,8 @@ export const StudentProblemWorkspace = ({
     );
   }
 
-  if (loading) {
-    return (
-      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
-        Loading Problem Workspace...
-      </div>
-    );
-  }
-
-  if (!question) {
-    return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
-        <h3>Problem Not Found</h3>
-        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
-          <ArrowLeft size={16} /> Back to Practice
-        </button>
-      </div>
-    );
-  }
-
-  const activeProblemsList = contestMode && contest?.problems
-    ? contest.problems
-    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
-  
-  const getProblemIdentifier = (p) => {
-    if (!p) return '';
-    if (typeof p === 'string') return p;
-    return p.slug || p._id || p.id || '';
-  };
-
-  const currentProblemIndex = activeProblemsList.findIndex(p => {
-    if (!p || !question) return false;
-    const pId = typeof p === 'string' ? p : (p._id || p.id);
-    const pSlug = typeof p === 'object' ? p.slug : null;
-    const pTitle = typeof p === 'object' ? p.title : null;
-
-    const qId = question._id || question.id;
-    const qSlug = question.slug;
-    const qTitle = question.title;
-
-    const idMatch = pId && qId && String(pId) === String(qId);
-    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
-                      (pId && qSlug && String(pId) === String(qSlug)) ||
-                      (pSlug && qId && String(pSlug) === String(qId));
-    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
-
-    return idMatch || slugMatch || titleMatch;
-  });
-
-  const selectedOptionValue = (() => {
-    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
-      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
-    }
-    if (question) {
-      const matched = activeProblemsList.find(p => {
-        const pId = typeof p === 'string' ? p : (p._id || p.id);
-        const pSlug = typeof p === 'object' ? p.slug : null;
-        const pTitle = typeof p === 'object' ? p.title : null;
-        return (
-          (pSlug && question.slug && pSlug === question.slug) ||
-          (pId && question._id && String(pId) === String(question._id)) ||
-          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
-        );
-      });
-      if (matched) return getProblemIdentifier(matched);
-    }
-    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
-  })();
-
-  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
-  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
-
-  const handleGoToPrevQuestion = () => {
-    if (hasPrevQuestion) {
-      const prevP = activeProblemsList[currentProblemIndex - 1];
-      fetchProblemDetails(getProblemIdentifier(prevP));
-    }
-  };
-
-  const handleGoToNextQuestion = () => {
-    if (hasNextQuestion) {
-      const nextP = activeProblemsList[currentProblemIndex + 1];
-      fetchProblemDetails(getProblemIdentifier(nextP));
-    }
-  };
-
-  if (contestCompleted) {
+  // Disqualified / Completed View
+  if (contestCompleted || disqualifiedReason) {
     if (disqualifiedReason) {
       return (
         <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '720px', textAlign: 'center' }}>
@@ -1471,14 +1520,99 @@ export const StudentProblemWorkspace = ({
                 onBack();
               }
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', fontSize: '1rem' }}
           >
-            <Eye size={16} /> View Results
+            <Trophy size={18} /> View Contest Results & Leaderboard
           </button>
         </div>
       </div>
     );
   }
+
+  if (loading) {
+    return (
+      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
+        Loading Problem Workspace...
+      </div>
+    );
+  }
+
+  if (!question) {
+    return (
+      <div style={{ padding: '4rem', textAlign: 'center' }}>
+        <h3>Problem Not Found</h3>
+        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
+          <ArrowLeft size={16} /> Back to Practice
+        </button>
+      </div>
+    );
+  }
+
+  const activeProblemsList = contestMode && contest?.problems
+    ? contest.problems
+    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
+  
+  const getProblemIdentifier = (p) => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    return p.slug || p._id || p.id || '';
+  };
+
+  const currentProblemIndex = activeProblemsList.findIndex(p => {
+    if (!p || !question) return false;
+    const pId = typeof p === 'string' ? p : (p._id || p.id);
+    const pSlug = typeof p === 'object' ? p.slug : null;
+    const pTitle = typeof p === 'object' ? p.title : null;
+
+    const qId = question._id || question.id;
+    const qSlug = question.slug;
+    const qTitle = question.title;
+
+    const idMatch = pId && qId && String(pId) === String(qId);
+    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
+                      (pId && qSlug && String(pId) === String(qSlug)) ||
+                      (pSlug && qId && String(pSlug) === String(qId));
+    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
+
+    return idMatch || slugMatch || titleMatch;
+  });
+
+  const selectedOptionValue = (() => {
+    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
+      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
+    }
+    if (question) {
+      const matched = activeProblemsList.find(p => {
+        const pId = typeof p === 'string' ? p : (p._id || p.id);
+        const pSlug = typeof p === 'object' ? p.slug : null;
+        const pTitle = typeof p === 'object' ? p.title : null;
+        return (
+          (pSlug && question.slug && pSlug === question.slug) ||
+          (pId && question._id && String(pId) === String(question._id)) ||
+          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
+        );
+      });
+      if (matched) return getProblemIdentifier(matched);
+    }
+    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
+  })();
+
+  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
+  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
+
+  const handleGoToPrevQuestion = () => {
+    if (hasPrevQuestion) {
+      const prevP = activeProblemsList[currentProblemIndex - 1];
+      fetchProblemDetails(getProblemIdentifier(prevP));
+    }
+  };
+
+  const handleGoToNextQuestion = () => {
+    if (hasNextQuestion) {
+      const nextP = activeProblemsList[currentProblemIndex + 1];
+      fetchProblemDetails(getProblemIdentifier(nextP));
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
@@ -1702,12 +1836,11 @@ export const StudentProblemWorkspace = ({
               onClick={() => {
                 if (!canFinishContest) {
                   const rem = Math.max(0, contestTimeLeft - 900);
-                  alert(`⏳ Finish Contest is Locked\n\nPer contest rules, this button only activates during the final 15 minutes before the contest ends.\n\nContest Time Remaining: ${formatSecs(contestTimeLeft)}\nUnlocks in: ${formatSecs(rem)}`);
+                  setSecurityAlert(`⏳ Finish Contest is locked: It unlocks during the final 15 minutes of the contest (in ${formatSecs(rem)}).`);
+                  setTimeout(() => setSecurityAlert(null), 4000);
                   return;
                 }
-                if (window.confirm("Are you sure you want to finish and submit the contest now?\n\nAll current solutions will be submitted and your contest session will be marked as completed.")) {
-                  handleManualFinish();
-                }
+                setFinishModalState('confirm');
               }}
               disabled={isFinishingContest}
               title={canFinishContest ? "Finish Contest: Submit solutions and end session" : `Unlocks during the final 15 minutes (in ${formatSecs(Math.max(0, contestTimeLeft - 900))})`}
@@ -2504,6 +2637,99 @@ export const StudentProblemWorkspace = ({
               <span style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginTop: '0.35rem' }}>
                 Stay focused on this window. The screen blur will lift automatically in {reinstatedCountdown}s.
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finish Contest Confirmation Modal */}
+      {finishModalState === 'confirm' && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          userSelect: 'none'
+        }}>
+          <div className="glass-card" style={{
+            maxWidth: '520px',
+            width: '100%',
+            background: '#FFFFFF',
+            borderRadius: '20px',
+            padding: '2.5rem 2.25rem',
+            textAlign: 'center',
+            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.3)',
+            border: '2px solid #EF4444'
+          }}>
+            <div style={{
+              width: '68px',
+              height: '68px',
+              borderRadius: '50%',
+              background: '#FEE2E2',
+              color: '#DC2626',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '1.25rem',
+              boxShadow: '0 0 20px rgba(220, 38, 38, 0.25)'
+            }}>
+              <CheckCircle size={38} />
+            </div>
+
+            <h3 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0F172A', margin: '0 0 0.5rem' }}>
+              Finish & Submit Contest?
+            </h3>
+
+            <p style={{ color: '#475569', fontSize: '0.94rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+              Are you sure you want to conclude and submit your contest solutions now? Your code will be finalized and your attempt will be submitted for scoring.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setFinishModalState(null)}
+                disabled={isFinishingContest}
+                style={{
+                  padding: '0.7rem 1.4rem',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: '1px solid #CBD5E1',
+                  background: '#F8FAFC',
+                  color: '#334155'
+                }}
+              >
+                Cancel & Continue Solving
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  setFinishModalState(null);
+                  handleManualFinish();
+                }}
+                disabled={isFinishingContest}
+                style={{
+                  padding: '0.7rem 1.4rem',
+                  fontWeight: 700,
+                  borderRadius: '8px',
+                  background: '#DC2626',
+                  color: '#FFFFFF',
+                  border: '1px solid #DC2626',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: '0 4px 14px rgba(220, 38, 38, 0.35)'
+                }}
+              >
+                {isFinishingContest ? 'Submitting...' : 'Yes, Finish Contest'}
+              </button>
             </div>
           </div>
         </div>

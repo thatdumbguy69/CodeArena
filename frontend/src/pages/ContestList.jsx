@@ -27,30 +27,30 @@ export const ContestList = ({ onEnterContest, setCurrentTab }) => {
 
   const handleEnterContest = async (c) => {
     const startMs = c.startTime ? new Date(c.startTime).getTime() : Date.now();
-    if (c.status === 'Upcoming' || startMs > Date.now()) {
-      alert(`⏳ This contest has not started yet.\n\nStarts at: ${new Date(c.startTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.\nAccess will unlock at start time.`);
-      return;
-    }
+    const isUpcoming = c.status === 'Upcoming' || startMs > Date.now();
     
     try {
-      const res = await api.post(`/contests/${c._id || c.slug}/session/start`);
-      const session = res.data.session;
+      const res = await api.post(`/contests/${c._id || c.slug}/session/start`).catch(() => null);
+      const session = res?.data?.session || null;
       
-      if (session.isFinished) {
+      if (session?.isFinished) {
         alert("You have already completed this contest and cannot re-enter.");
         return;
       }
 
-      const elapsedMs = new Date() - new Date(session.startTime);
-      const remainingSecs = Math.max(0, (c.duration * 60) - Math.floor(elapsedMs / 1000));
+      const elapsedMs = session?.startTime ? (new Date() - new Date(session.startTime)) : 0;
+      const remainingSecs = isUpcoming 
+        ? ((c.duration || 60) * 60)
+        : Math.max(0, (c.duration * 60) - Math.floor(elapsedMs / 1000));
       
-      if (remainingSecs <= 0) {
-        alert("Time has expired for your contest session.");
-        await api.post(`/contests/${c._id || c.slug}/session/finish`);
+      if (!isUpcoming && remainingSecs <= 0 && c.status === 'Ended') {
+        alert("Time has expired for this contest session.");
+        await api.post(`/contests/${c._id || c.slug}/session/finish`).catch(() => {});
         return;
       }
 
-      const contestWithSession = { ...c, session, remainingSecs };
+      const startsInSecs = isUpcoming ? Math.max(0, Math.floor((startMs - Date.now()) / 1000)) : 0;
+      const contestWithSession = { ...c, session, remainingSecs, startsInSecs };
       onEnterContest(contestWithSession);
     } catch (err) {
       console.error('Error starting contest session:', err);
