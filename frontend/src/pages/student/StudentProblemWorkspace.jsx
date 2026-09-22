@@ -58,11 +58,701 @@ export const StudentProblemWorkspace = ({
   const { user } = useAuth();
   const { socket, joinContest, emitBlurEvent } = useSocket();
 
+  // Basic Problem & Contest State
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [practiceProblemsList, setPracticeProblemsList] = useState(allProblems || []);
   const [currentContestData, setCurrentContestData] = useState(contest);
 
+  // Editor State
+  const [language, setLanguage] = useState('python');
+  const [codeMap, setCodeMap] = useState({});
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
+  // Execution Console State
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [execResult, setExecResult] = useState(null);
+
+  // Proctoring & Modals State
+  const [blurCount, setBlurCount] = useState(0);
+  const [securityAlert, setSecurityAlert] = useState(null);
+  const [antiCheatLogs, setAntiCheatLogs] = useState([]);
+  const [isManuallyFinished, setIsManuallyFinished] = useState(false);
+  const [finishModalState, setFinishModalState] = useState(null); // null | 'locked' | 'confirm'
+  const [isFinishingContest, setIsFinishingContest] = useState(false);
+  const [disqualifiedReason, setDisqualifiedReason] = useState(null);
+  const [reinstatedModalOpen, setReinstatedModalOpen] = useState(false);
+  const [reinstatedCountdown, setReinstatedCountdown] = useState(20);
+  const [warningCountdown, setWarningCountdown] = useState(15);
+  const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement));
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [firstEntryModalOpen, setFirstEntryModalOpen] = useState(false);
+  const [timerToast, setTimerToast] = useState(null);
+
+  // Contest Timing Calculations
+  const [contestTimeLeft, setContestTimeLeft] = useState(() => {
+    if (contest?.endTime) {
+      return Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000));
+    }
+    return contest?.remainingSecs || 0;
+  });
+
+  const [contestStartsIn, setContestStartsIn] = useState(() => {
+    if (!contestMode || !contest) return 0;
+    if (contest.startTime) {
+      const diff = Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000);
+      return Math.max(0, diff);
+    }
+    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
+      return Math.max(0, contest.startsInSecs);
+    }
+    return 0;
+  });
+
+  const [contestCompleted, setContestCompleted] = useState(() => {
+    if (!contestMode || !contest) return false;
+    const nowMs = Date.now();
+    const startMs = contest.startTime ? new Date(contest.startTime).getTime() : 0;
+    const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
+    const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
+    if (isUpcoming) return false;
+    if (contest.status === 'Ended' && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
+    if (contest.userSession?.isFinished) return true;
+    if (endMs <= nowMs && startMs <= nowMs && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
+    return false;
+  });
+
+  const canFinishContest = contestTimeLeft <= 15 * 60;
+
+  // Proctoring Keys & Storage
+  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
+  const userId = user?._id || user?.id || 'student';
+  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
+  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
+
+  // All React Refs Defined at Top
+  const editorRef = React.useRef(null);
+  const contestClipboardRef = React.useRef('');
+  const contestEndTimeRef = React.useRef(
+    contest?.endTime
+      ? new Date(contest.endTime)
+      : (contest?.remainingSecs ? new Date(Date.now() + contest.remainingSecs * 1000) : null)
+  );
+  const reinstatedTimerRef = React.useRef(null);
+  const warningTimerRef = React.useRef(null);
+  const hasEnteredContestRef = React.useRef(false);
+  const isProctoringArmedRef = React.useRef(false);
+  const lastViolationTimeRef = React.useRef(0);
+  const proctoringArmTimerRef = React.useRef(null);
+
+  const codeMapRef = React.useRef(codeMap);
+  const languageRef = React.useRef(language);
+  const questionRef = React.useRef(question);
+  const contestRef = React.useRef(contest);
+  const contestCompletedRef = React.useRef(contestCompleted);
+  const contestStartsInRef = React.useRef(contestStartsIn);
+  const blurCountRef = React.useRef(blurCount);
+  const antiCheatLogsRef = React.useRef(antiCheatLogs);
+
+  // Synchronize dynamic refs to latest state
+  useEffect(() => { codeMapRef.current = codeMap; }, [codeMap]);
+  useEffect(() => { languageRef.current = language; }, [language]);
+  useEffect(() => { questionRef.current = question; }, [question]);
+  useEffect(() => { contestRef.current = contest; }, [contest]);
+  useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
+  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
+  useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
+  useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
+
+  // Handler Functions
+  const armProctoring = () => {
+    if (proctoringArmTimerRef.current) clearTimeout(proctoringArmTimerRef.current);
+    hasEnteredContestRef.current = true;
+    proctoringArmTimerRef.current = setTimeout(() => {
+      isProctoringArmedRef.current = true;
+    }, 3500);
+  };
+
+  const enterFullscreen = () => {
+    try {
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      const elem = document.documentElement;
+      const fsOpts = { navigationUI: 'hide' };
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen(fsOpts).catch(() => {
+          elem.requestFullscreen().catch(() => {});
+        });
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
+      }
+
+      armProctoring();
+      setFirstEntryModalOpen(false);
+      setWarningModalOpen(false);
+    } catch (e) {
+      console.warn('Enter fullscreen error:', e);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    } catch (e) {
+      console.warn('Fullscreen toggle failed:', e);
+    }
+  };
+
+  const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
+    if (contestCompletedRef.current && !isDisqualified) return;
+    contestCompletedRef.current = true;
+    setContestCompleted(true);
+    isProctoringArmedRef.current = false;
+
+    if (isDisqualified) {
+      setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
+    }
+
+    const currentQuestion = questionRef.current;
+    const currentLang = languageRef.current || 'python';
+    const currentCodeMap = codeMapRef.current || {};
+    const currentContest = contestRef.current;
+    const userCode = currentCodeMap[currentLang];
+    const currentBlurs = blurCountRef.current || 0;
+    const currentLogs = antiCheatLogsRef.current || [];
+
+    try {
+      if (userCode && userCode.trim().length > 0 && currentQuestion) {
+        await api.post('/submissions/submit', {
+          questionId: currentQuestion._id || currentQuestion.id || currentQuestion.slug,
+          language: currentLang,
+          code: userCode,
+          contestId: currentContest?._id || currentContest?.slug,
+          blurCount: currentBlurs,
+          antiCheatLogs: [
+            ...currentLogs,
+            { event: isDisqualified ? `Auto-Submitted on Disqualification with ${currentBlurs} violations` : `Auto-Submitted on Contest Completion with ${currentBlurs} tab blurs`, timestamp: new Date() }
+          ]
+        });
+      }
+      if (currentContest) {
+        await api.post(`/contests/${currentContest._id || currentContest.slug}/session/finish`).catch(() => {});
+      }
+    } catch (e) {
+      console.error('Auto submit error:', e);
+    }
+  };
+
+  const handleFocusLoss = (reason = 'Tab switch / focus loss') => {
+    if (contestCompletedRef.current || !isProctoringArmedRef.current) return;
+
+    const now = Date.now();
+    if (now - lastViolationTimeRef.current < 2000) {
+      return;
+    }
+    lastViolationTimeRef.current = now;
+
+    const nextCount = blurCountRef.current + 1;
+    setBlurCount(nextCount);
+    blurCountRef.current = nextCount;
+
+    const maxAllowed = contestRef.current?.maxAllowedBlurs !== undefined 
+      ? Math.max(1, parseInt(contestRef.current.maxAllowedBlurs, 10) || 2) 
+      : 2;
+
+    const newLog = {
+      event: `${reason} violation #${nextCount}`,
+      timestamp: new Date()
+    };
+    setAntiCheatLogs(prev => [...prev, newLog]);
+
+    const cId = contestRef.current?._id || contestRef.current?.slug || contestRef.current?.id;
+    if (cId) {
+      emitBlurEvent({
+        contestId: cId,
+        userId: user?._id || user?.id,
+        userName: user?.name || 'Student',
+        teamName: user?.teamName || user?.name || 'Team',
+        email: user?.email,
+        blurCount: nextCount,
+        maxAllowedBlurs: maxAllowed,
+        isDisqualified: nextCount >= maxAllowed,
+        disqualificationReason: nextCount >= maxAllowed ? `Exceeded maximum allowed window focus / fullscreen violations (${nextCount}/${maxAllowed})` : '',
+        event: `${reason} #${nextCount}`
+      });
+
+      api.post(`/contests/${cId}/session/event`, {
+        event: `${reason} #${nextCount}`,
+        blurCount: nextCount
+      }).catch(() => {});
+    }
+
+    if (nextCount === 1) {
+      setWarningModalOpen(true);
+      setWarningCountdown(15);
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+
+      warningTimerRef.current = setInterval(() => {
+        setWarningCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(warningTimerRef.current);
+            setWarningModalOpen(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      setSecurityAlert(`⚠️ PROCTORING WARNING (Violation 1 of ${maxAllowed}): ${reason} detected! Next violation will result in immediate disqualification.`);
+    } else if (nextCount >= maxAllowed) {
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      setWarningModalOpen(false);
+      handleAutoSubmitContest(true, `You have been disqualified for exceeding the maximum tab switch / fullscreen exit threshold (${nextCount}/${maxAllowed} violations). Only a contest administrator can reinstate your qualification.`);
+    }
+  };
+
+  const fetchProblemDetails = async (targetSlug = problemSlug) => {
+    let slugStr = targetSlug;
+    if (typeof slugStr === 'object' && slugStr !== null) {
+      slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
+    }
+
+    if (slugStr === 'contest-lobby' || !slugStr) {
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
+      if (contestProblems && contestProblems.length > 0) {
+        const first = contestProblems[0];
+        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+      }
+    }
+
+    try {
+      setLoading(true);
+      setExecResult(null);
+
+      let data = null;
+
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems || []);
+
+      if (contestProblems.length > 0 && slugStr) {
+        const matchingContestProb = contestProblems.find(p => {
+          if (!p) return false;
+          if (typeof p === 'string') return p === slugStr;
+          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
+        });
+        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
+          data = matchingContestProb;
+        }
+      }
+
+      if (!data && slugStr && slugStr !== 'contest-lobby') {
+        try {
+          const res = await api.get(`/questions/${slugStr}`);
+          if (res.data?.question || res.data) {
+            data = res.data.question || res.data;
+          }
+        } catch (e) {
+          console.warn('Direct problem fetch fallback:', e);
+        }
+      }
+
+      if (!data && contestMode) {
+        try {
+          const cId = contest?._id || contest?.id || contest?.slug;
+          if (cId) {
+            const cRes = await api.get(`/contests/${cId}`);
+            if (cRes.data?.contest?.problems?.length > 0) {
+              const freshProbs = cRes.data.contest.problems;
+              setCurrentContestData(cRes.data.contest);
+              const firstP = freshProbs[0];
+              if (typeof firstP === 'object' && firstP.description) {
+                data = firstP;
+              } else {
+                const s = typeof firstP === 'object' ? (firstP.slug || firstP._id) : firstP;
+                const qRes = await api.get(`/questions/${s}`);
+                data = qRes.data?.question || qRes.data;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Contest problem refetch error:', err);
+        }
+      }
+
+      if (!data) {
+        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
+        if (pool.length > 0) {
+          data = pool.find(q => q && (q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr))) || pool[0];
+        }
+      }
+
+      if (!data && contestMode) {
+        data = {
+          _id: 'default_contest_problem',
+          slug: 'contest-problem-1',
+          title: 'Problem 1',
+          description: 'Problem description is loading or synchronizing with contest server. Select a problem from the dropdown above if available.',
+          difficulty: 'Medium',
+          constraints: 'Standard contest constraints apply.',
+          inputFormat: 'Standard input format.',
+          outputFormat: 'Standard output format.',
+          sampleTestCases: [{ input: '', expectedOutput: '' }],
+          starterCode: defaultBoilerplates
+        };
+      }
+
+      if (data) {
+        setQuestion(data);
+        const pKey = data._id || data.slug || slugStr;
+
+        const loadCodeForLang = (lang) => {
+          try {
+            const saved = localStorage.getItem(`codearena_user_code_${pKey}_${lang}`);
+            if (saved !== null && saved.trim() !== '') return saved;
+          } catch (e) {}
+          return data.starterCode?.[lang] || (lang === 'python' ? data.templateCode : null) || defaultBoilerplates[lang] || '';
+        };
+
+        const freshCodeMap = {
+          python: loadCodeForLang('python'),
+          cpp: loadCodeForLang('cpp'),
+          c: loadCodeForLang('c'),
+          java: loadCodeForLang('java'),
+          javascript: loadCodeForLang('javascript')
+        };
+
+        setCodeMap(freshCodeMap);
+      }
+    } catch (err) {
+      console.error('Error fetching problem details:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleContestStarted = async () => {
+    setLoading(true);
+    setContestStartsIn(0);
+    contestStartsInRef.current = 0;
+    setCurrentContestData(prev => (prev ? { ...prev, status: 'Live' } : { status: 'Live' }));
+    const toastId = Date.now();
+    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
+    setTimeout(() => {
+      setTimerToast(p => (p?.id === toastId ? null : p));
+    }, 7000);
+
+    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
+    if (cId) {
+      try {
+        const res = await api.get(`/contests/${cId}`);
+        if (res.data?.contest) {
+          const freshContest = res.data.contest;
+          contestRef.current = freshContest;
+          setCurrentContestData(freshContest);
+          if (freshContest.endTime) {
+            contestEndTimeRef.current = new Date(freshContest.endTime);
+            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
+            setContestTimeLeft(left);
+          }
+          const freshProblems = freshContest.problems || [];
+          if (freshProblems.length > 0) {
+            const first = freshProblems[0];
+            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+            await fetchProblemDetails(firstSlug);
+          } else {
+            await fetchProblemDetails();
+          }
+        }
+      } catch (err) {
+        console.error('Error unlocking contest questions:', err);
+        await fetchProblemDetails();
+      }
+    } else {
+      await fetchProblemDetails();
+    }
+    armProctoring();
+  };
+
+  const handleManualFinish = async () => {
+    setIsFinishingContest(true);
+    setIsManuallyFinished(true);
+    try {
+      await handleAutoSubmitContest(false, 'Contest manually finished and submitted by candidate.');
+    } finally {
+      setIsFinishingContest(false);
+      setFinishModalState(null);
+    }
+  };
+
+  const handleLanguageChange = (newLang) => {
+    setLanguage(newLang);
+    const pKey = question?._id || question?.slug || problemSlug;
+    let savedCode = codeMap[newLang];
+
+    if (!savedCode && pKey) {
+      try {
+        const stored = localStorage.getItem(`codearena_user_code_${pKey}_${newLang}`);
+        if (stored !== null && stored.trim() !== '') savedCode = stored;
+      } catch (e) {}
+    }
+
+    if (!savedCode) {
+      savedCode = question?.starterCode?.[newLang] || (newLang === 'python' ? question?.templateCode : null) || defaultBoilerplates[newLang] || '';
+    }
+
+    setCodeMap(prev => ({ ...prev, [newLang]: savedCode }));
+  };
+
+  const handleCodeChange = (val) => {
+    const codeVal = val || '';
+    setCodeMap(prev => ({ ...prev, [language]: codeVal }));
+    const pKey = question?._id || question?.slug || problemSlug;
+    if (pKey) {
+      try {
+        localStorage.setItem(`codearena_user_code_${pKey}_${language}`, codeVal);
+      } catch (e) {}
+    }
+  };
+
+  const handleResetCode = () => {
+    const defaultCode = question?.starterCode?.[language] || (language === 'python' ? question?.templateCode : null) || defaultBoilerplates[language] || '';
+    setCodeMap(prev => ({ ...prev, [language]: defaultCode }));
+    const pKey = question?._id || question?.slug || problemSlug;
+    if (pKey) {
+      try {
+        localStorage.removeItem(`codearena_user_code_${pKey}_${language}`);
+      } catch (e) {}
+    }
+  };
+
+  const handleRunCode = async () => {
+    try {
+      setExecuting(true);
+      setConsoleOpen(true);
+      setExecResult({ status: 'Running', message: 'Executing code against sample test cases...' });
+
+      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
+
+      const res = await api.post('/submissions/run', {
+        questionId: qId,
+        language,
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')
+      });
+
+      const anyStderr = (res.data.testResults && res.data.testResults.find(d => d.stderr)?.stderr) || res.data.stderr;
+
+      setExecResult({
+        type: 'run',
+        success: true,
+        testResults: res.data.testResults || [],
+        stdout: res.data.stdout,
+        stderr: anyStderr,
+        executionTime: res.data.executionTime
+      });
+    } catch (err) {
+      setExecResult({
+        type: 'run',
+        success: false,
+        message: err.response?.data?.message || 'Execution error'
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    try {
+      setExecuting(true);
+      setConsoleOpen(true);
+      setExecResult({ status: 'Evaluating', message: 'Evaluating solution against hidden official test cases...' });
+
+      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
+
+      const res = await api.post('/submissions/submit', {
+        questionId: qId,
+        language,
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || ''),
+        contestId: contestMode && contest ? (contest._id || contest.id || contest.slug) : null,
+        blurCount: blurCountRef.current || 0,
+        antiCheatLogs: antiCheatLogsRef.current || []
+      });
+
+      const sub = res.data.submission || res.data;
+      const subScore = sub.score !== undefined ? sub.score : 0;
+      const subStderr = res.data.stderr || sub.stderr || (sub.details && sub.details.find(d => d.stderr)?.stderr);
+      setExecResult({
+        type: 'submit',
+        success: true,
+        verdict: sub.verdict || sub.status || 'Accepted',
+        score: subScore,
+        stderr: subStderr,
+        passedTests: sub.passedTests || sub.testCasesPassed,
+        totalTests: sub.totalTests || sub.totalTestCases,
+        executionTime: sub.executionTime,
+        memory: sub.memory
+      });
+    } catch (err) {
+      setExecResult({
+        type: 'submit',
+        success: false,
+        message: err.response?.data?.message || 'Submission evaluation error'
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    if (!contestMode) return;
+
+    const copyInternal = () => {
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+          }
+        }
+      }
+    };
+
+    const cutInternal = () => {
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+          editor.executeEdits('contest-cut', [{
+            range: selection,
+            text: '',
+            forceMoveMarkers: true
+          }]);
+          editor.pushUndoStop();
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const model = editor.getModel();
+          const lineText = model?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined && model) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+            const range = pos.lineNumber < model.getLineCount()
+              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
+              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
+            editor.executeEdits('contest-cut-line', [{
+              range,
+              text: '',
+              forceMoveMarkers: true
+            }]);
+            editor.pushUndoStop();
+          }
+        }
+      }
+    };
+
+    const pasteInternal = () => {
+      if (!contestClipboardRef.current) {
+        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
+        setTimeout(() => setSecurityAlert(null), 3500);
+        return;
+      }
+      const selection = editor.getSelection();
+      if (selection) {
+        editor.executeEdits('contest-paste', [{
+          range: selection,
+          text: contestClipboardRef.current,
+          forceMoveMarkers: true
+        }]);
+        editor.pushUndoStop();
+      }
+    };
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, copyInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, cutInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteInternal);
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, pasteInternal);
+
+    editor.onKeyDown((e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+    });
+
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener('copy', (e) => {
+        copyInternal();
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('cut', (e) => {
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('paste', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        pasteInternal();
+      }, true);
+
+      domNode.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }, true);
+    }
+  };
+
+  // Sync contest props to currentContestData
   useEffect(() => {
     if (contest) {
       setCurrentContestData(prev => {
@@ -91,85 +781,10 @@ export const StudentProblemWorkspace = ({
     };
   }, [contestMode]);
 
-  const [contestTimeLeft, setContestTimeLeft] = useState(() => {
-    if (contest?.endTime) {
-      return Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000));
-    }
-    return contest?.remainingSecs || 0;
-  });
-
-  // Countdown timer until contest begins
-  const [contestStartsIn, setContestStartsIn] = useState(() => {
-    if (!contestMode || !contest) return 0;
-    if (contest.startTime) {
-      const diff = Math.floor((new Date(contest.startTime).getTime() - Date.now()) / 1000);
-      return Math.max(0, diff);
-    }
-    if (contest.startsInSecs !== undefined && contest.startsInSecs !== null) {
-      return Math.max(0, contest.startsInSecs);
-    }
-    return 0;
-  });
-
-  const [contestCompleted, setContestCompleted] = useState(() => {
-    if (!contestMode || !contest) return false;
-    const nowMs = Date.now();
-    const startMs = contest.startTime ? new Date(contest.startTime).getTime() : 0;
-    const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
-    const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
-    if (isUpcoming) return false;
-    if (contest.status === 'Ended' && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
-    if (contest.userSession?.isFinished) return true;
-    if (endMs <= nowMs && startMs <= nowMs && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
-    return false;
-  });
-
-  const [timerToast, setTimerToast] = useState(null);
-  const contestEndTimeRef = React.useRef(
-    contest?.endTime
-      ? new Date(contest.endTime)
-      : (contest?.remainingSecs ? new Date(Date.now() + contest.remainingSecs * 1000) : null)
-  );
-
-  const [isManuallyFinished, setIsManuallyFinished] = useState(false);
-  const [finishModalState, setFinishModalState] = useState(null); // null | 'locked' | 'confirm'
-  const [isFinishingContest, setIsFinishingContest] = useState(false);
-  const [disqualifiedReason, setDisqualifiedReason] = useState(null);
-  const [reinstatedModalOpen, setReinstatedModalOpen] = useState(false);
-  const [reinstatedCountdown, setReinstatedCountdown] = useState(20);
-  const reinstatedTimerRef = React.useRef(null);
-  const [warningCountdown, setWarningCountdown] = useState(15);
-  const warningTimerRef = React.useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement));
-  const [warningModalOpen, setWarningModalOpen] = useState(false);
-  const [firstEntryModalOpen, setFirstEntryModalOpen] = useState(false);
-
-  const canFinishContest = contestTimeLeft <= 15 * 60;
-
-  const hasEnteredContestRef = React.useRef(false);
-  const isProctoringArmedRef = React.useRef(false);
-  const lastViolationTimeRef = React.useRef(0);
-  const proctoringArmTimerRef = React.useRef(null);
-
-  const armProctoring = () => {
-    if (proctoringArmTimerRef.current) clearTimeout(proctoringArmTimerRef.current);
-    hasEnteredContestRef.current = true;
-    // 3.5s grace period so any browser window transition / fullscreen animation settles cleanly
-    proctoringArmTimerRef.current = setTimeout(() => {
-      isProctoringArmedRef.current = true;
-    }, 3500);
-  };
-
-  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
-  const userId = user?._id || user?.id || 'student';
-  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
-  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
-  const blurCountKey = `codearena_contest_blurs_${contestId}_${userId}`;
-
+  // Coordinator bypass & reload check
   useEffect(() => {
     if (!contestMode) return;
 
-    // Check for coordinator emergency refresh bypass
     const isCoordinatorBypass = sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true';
     if (isCoordinatorBypass) {
       sessionStorage.removeItem('codearena_coordinator_bypass_refresh');
@@ -195,12 +810,12 @@ export const StudentProblemWorkspace = ({
 
     if (isReload && !contestCompletedRef.current) {
       sessionStorage.removeItem(reloadFlagKey);
-      // Automatically prompt fullscreen and trigger violation
       setFirstEntryModalOpen(false);
       handleFocusLoss('Page refreshed during contest');
     }
   }, [contestMode]);
 
+  // Practice problems fallback loader
   useEffect(() => {
     if (!contestMode && (!allProblems || allProblems.length === 0)) {
       api.get('/questions').then(res => {
@@ -212,6 +827,7 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, allProblems]);
 
+  // Join contest room & check fullscreen
   useEffect(() => {
     if (contestMode && contest) {
       const cId = contest._id || contest.id || contest.slug;
@@ -224,7 +840,6 @@ export const StudentProblemWorkspace = ({
         email: user?.email
       });
 
-      // Check if already in fullscreen or prompt student to enter fullscreen
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
       if (!isFs) {
         setFirstEntryModalOpen(true);
@@ -234,6 +849,7 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, contest?._id, user?._id]);
 
+  // Socket real-time event listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -361,8 +977,9 @@ export const StudentProblemWorkspace = ({
       if (reinstatedTimerRef.current) clearInterval(reinstatedTimerRef.current);
       if (warningTimerRef.current) clearInterval(warningTimerRef.current);
     };
-  }, [socket]);
+  }, [socket, contestMode]);
 
+  // Qualification status polling
   useEffect(() => {
     if (!contestMode || !disqualifiedReason || !contest) return;
     const cId = contest._id || contest.id || contest.slug;
@@ -378,6 +995,7 @@ export const StudentProblemWorkspace = ({
     return () => clearInterval(pollInterval);
   }, [contestMode, disqualifiedReason, contest?._id, contest?.slug]);
 
+  // Fullscreen change listener
   useEffect(() => {
     const handleFSChange = () => {
       const isFsNow = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
@@ -411,154 +1029,10 @@ export const StudentProblemWorkspace = ({
     };
   }, [contestMode, contestStartsIn]);
 
-  const enterFullscreen = () => {
-    try {
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-      const elem = document.documentElement;
-      const fsOpts = { navigationUI: 'hide' };
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen(fsOpts).catch(() => {
-          elem.requestFullscreen().catch(() => {});
-        });
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      }
-
-      if (navigator.keyboard && navigator.keyboard.lock) {
-        navigator.keyboard.lock(['Escape']).catch(() => {});
-      }
-
-      armProctoring();
-      setFirstEntryModalOpen(false);
-      setWarningModalOpen(false);
-    } catch (e) {
-      console.warn('Enter fullscreen error:', e);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    try {
-      if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } else {
-        enterFullscreen();
-      }
-    } catch (e) {
-      console.warn('Fullscreen toggle failed:', e);
-    }
-  };
-
-  // Editor State
-  const [language, setLanguage] = useState('python');
-  const [codeMap, setCodeMap] = useState({});
-  const [resetModalOpen, setResetModalOpen] = useState(false);
-
-  // Execution Console State
-  const [consoleOpen, setConsoleOpen] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [execResult, setExecResult] = useState(null);
-
-  // Anti-Cheat Proctoring State
-  const editorRef = React.useRef(null);
-  const contestClipboardRef = React.useRef('');
-  const [blurCount, setBlurCount] = useState(0);
-  const [securityAlert, setSecurityAlert] = useState(null);
-  const [antiCheatLogs, setAntiCheatLogs] = useState([]);
-
-  // Refs for callbacks
-  const codeMapRef = React.useRef(codeMap);
-  const languageRef = React.useRef(language);
-  const questionRef = React.useRef(question);
-  const contestRef = React.useRef(contest);
-  const contestCompletedRef = React.useRef(contestCompleted);
-  const contestStartsInRef = React.useRef(contestStartsIn);
-  const blurCountRef = React.useRef(blurCount);
-  const antiCheatLogsRef = React.useRef(antiCheatLogs);
-
-  useEffect(() => { codeMapRef.current = codeMap; }, [codeMap]);
-  useEffect(() => { languageRef.current = language; }, [language]);
-  useEffect(() => { questionRef.current = question; }, [question]);
-  useEffect(() => { contestRef.current = contest; }, [contest]);
-  useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
-  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
-  useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
-  useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
-
-  const handleFocusLoss = (reason = 'Tab switch / focus loss') => {
-    if (contestCompletedRef.current || !isProctoringArmedRef.current) return;
-
-    const now = Date.now();
-    if (now - lastViolationTimeRef.current < 2000) {
-      return;
-    }
-    lastViolationTimeRef.current = now;
-
-    const nextCount = blurCountRef.current + 1;
-    setBlurCount(nextCount);
-    blurCountRef.current = nextCount;
-
-    const maxAllowed = contestRef.current?.maxAllowedBlurs !== undefined 
-      ? Math.max(1, parseInt(contestRef.current.maxAllowedBlurs, 10) || 2) 
-      : 2;
-
-    const newLog = {
-      event: `${reason} violation #${nextCount}`,
-      timestamp: new Date()
-    };
-    setAntiCheatLogs(prev => [...prev, newLog]);
-
-    const cId = contestRef.current?._id || contestRef.current?.slug || contestRef.current?.id;
-    if (cId) {
-      emitBlurEvent({
-        contestId: cId,
-        userId: user?._id || user?.id,
-        userName: user?.name || 'Student',
-        teamName: user?.teamName || user?.name || 'Team',
-        email: user?.email,
-        blurCount: nextCount,
-        maxAllowedBlurs: maxAllowed,
-        isDisqualified: nextCount >= maxAllowed,
-        disqualificationReason: nextCount >= maxAllowed ? `Exceeded maximum allowed window focus / fullscreen violations (${nextCount}/${maxAllowed})` : '',
-        event: `${reason} #${nextCount}`
-      });
-
-      api.post(`/contests/${cId}/session/event`, {
-        event: `${reason} #${nextCount}`,
-        blurCount: nextCount
-      }).catch(() => {});
-    }
-
-    if (nextCount === 1) {
-      setWarningModalOpen(true);
-      setWarningCountdown(15);
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-
-      warningTimerRef.current = setInterval(() => {
-        setWarningCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(warningTimerRef.current);
-            setWarningModalOpen(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      setSecurityAlert(`⚠️ PROCTORING WARNING (Violation 1 of ${maxAllowed}): ${reason} detected! Next violation will result in immediate disqualification.`);
-    } else if (nextCount >= maxAllowed) {
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-      setWarningModalOpen(false);
-      handleAutoSubmitContest(true, `You have been disqualified for exceeding the maximum tab switch / fullscreen exit threshold (${nextCount}/${maxAllowed} violations). Only a contest administrator can reinstate your qualification.`);
-    }
-  };
-
+  // Anti-cheat keyboard, mouse, and focus event listeners
   useEffect(() => {
     if (!contestMode || contestCompleted || contestStartsIn > 0) return;
 
-    // 1. Right Click Prevention in Contest
     const handleContextMenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -567,7 +1041,6 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 2. Isolated Internal Contest Copy / Cut / Paste (Smart Interviews style)
     const handleCopy = (e) => {
       if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
         return;
@@ -616,12 +1089,10 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert) + Hidden Coordinator Refresh
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
 
-      // Hidden Coordinator Emergency Refresh: Ctrl + Alt + Shift + R OR Ctrl + Shift + F5
       const isCoordinatorRefresh = 
         (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'r') ||
         (isCtrlOrCmd && e.shiftKey && (key === 'f5' || e.keyCode === 116));
@@ -635,7 +1106,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Hidden Coordinator Emergency Exit Fullscreen: Ctrl + Alt + Shift + X OR Ctrl + Shift + Esc
       const isCoordinatorExitFs = 
         (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'x') ||
         (isCtrlOrCmd && e.shiftKey && key === 'escape');
@@ -651,7 +1121,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Refresh blocking for students
       if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
         e.preventDefault();
         e.stopPropagation();
@@ -660,7 +1129,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Intercept Paste shortcut (Ctrl+V / Shift+Insert) to only use internal contest clipboard
       if ((isCtrlOrCmd && key === 'v') || (e.shiftKey && key === 'insert')) {
         e.preventDefault();
         e.stopPropagation();
@@ -684,7 +1152,6 @@ export const StudentProblemWorkspace = ({
       }
     };
 
-    // 4. Beforeunload Warning & Reload Flag
     const handleBeforeUnload = (e) => {
       if (sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true') {
         return;
@@ -701,7 +1168,6 @@ export const StudentProblemWorkspace = ({
       }
     };
 
-    // 5. Blur & Visibility Change Focus Loss
     const onBlur = () => {
       if (isProctoringArmedRef.current) {
         if (document.hidden) {
@@ -747,244 +1213,14 @@ export const StudentProblemWorkspace = ({
     };
   }, [contestMode, contestCompleted, contestStartsIn]);
 
-  const handleEditorDidMount = (editor, monaco) => {
-    editorRef.current = editor;
-
-    if (!contestMode) return;
-
-    const copyInternal = () => {
-      const selection = editor.getSelection();
-      if (selection && !selection.isEmpty()) {
-        const selectedText = editor.getModel()?.getValueInRange(selection);
-        if (selectedText) {
-          contestClipboardRef.current = selectedText;
-          try {
-            navigator.clipboard.writeText(selectedText).catch(() => {});
-          } catch (e) {}
-        }
-      } else {
-        const pos = editor.getPosition();
-        if (pos) {
-          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
-          if (lineText !== undefined) {
-            contestClipboardRef.current = lineText + '\n';
-            try {
-              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
-            } catch (e) {}
-          }
-        }
-      }
-    };
-
-    const cutInternal = () => {
-      const selection = editor.getSelection();
-      if (selection && !selection.isEmpty()) {
-        const selectedText = editor.getModel()?.getValueInRange(selection);
-        if (selectedText) {
-          contestClipboardRef.current = selectedText;
-          try {
-            navigator.clipboard.writeText(selectedText).catch(() => {});
-          } catch (e) {}
-          editor.executeEdits('contest-cut', [{
-            range: selection,
-            text: '',
-            forceMoveMarkers: true
-          }]);
-          editor.pushUndoStop();
-        }
-      } else {
-        const pos = editor.getPosition();
-        if (pos) {
-          const model = editor.getModel();
-          const lineText = model?.getLineContent(pos.lineNumber);
-          if (lineText !== undefined && model) {
-            contestClipboardRef.current = lineText + '\n';
-            try {
-              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
-            } catch (e) {}
-            const range = pos.lineNumber < model.getLineCount()
-              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
-              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
-            editor.executeEdits('contest-cut-line', [{
-              range,
-              text: '',
-              forceMoveMarkers: true
-            }]);
-            editor.pushUndoStop();
-          }
-        }
-      }
-    };
-
-    const pasteInternal = () => {
-      if (!contestClipboardRef.current) {
-        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
-        setTimeout(() => setSecurityAlert(null), 3500);
-        return;
-      }
-      const selection = editor.getSelection();
-      if (selection) {
-        editor.executeEdits('contest-paste', [{
-          range: selection,
-          text: contestClipboardRef.current,
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-      }
-    };
-
-    // Override Monaco commands to enforce isolated contest clipboard
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, copyInternal);
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, cutInternal);
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteInternal);
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, pasteInternal);
-
-    editor.onKeyDown((e) => {
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
-        e.preventDefault();
-        e.stopPropagation();
-        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
-        setTimeout(() => setSecurityAlert(null), 3000);
-      }
-    });
-
-    const domNode = editor.getDomNode();
-    if (domNode) {
-      domNode.addEventListener('copy', (e) => {
-        copyInternal();
-        if (e.clipboardData && contestClipboardRef.current) {
-          e.clipboardData.setData('text/plain', contestClipboardRef.current);
-        }
-        e.preventDefault();
-        e.stopPropagation();
-      }, true);
-
-      domNode.addEventListener('cut', (e) => {
-        if (e.clipboardData && contestClipboardRef.current) {
-          e.clipboardData.setData('text/plain', contestClipboardRef.current);
-        }
-        e.preventDefault();
-        e.stopPropagation();
-      }, true);
-
-      domNode.addEventListener('paste', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        pasteInternal();
-      }, true);
-
-      domNode.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
-        setTimeout(() => setSecurityAlert(null), 3000);
-      }, true);
-    }
-  };
-
-  const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
-    if (contestCompletedRef.current && !isDisqualified) return;
-    contestCompletedRef.current = true;
-    setContestCompleted(true);
-    isProctoringArmedRef.current = false;
-
-    if (isDisqualified) {
-      setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
-    }
-
-    const currentQuestion = questionRef.current;
-    const currentLang = languageRef.current || 'python';
-    const currentCodeMap = codeMapRef.current || {};
-    const currentContest = contestRef.current;
-    const userCode = currentCodeMap[currentLang];
-    const currentBlurs = blurCountRef.current || 0;
-    const currentLogs = antiCheatLogsRef.current || [];
-
-    try {
-      if (userCode && userCode.trim().length > 0 && currentQuestion) {
-        await api.post('/submissions/submit', {
-          questionId: currentQuestion._id || currentQuestion.id || currentQuestion.slug,
-          language: currentLang,
-          code: userCode,
-          contestId: currentContest?._id || currentContest?.slug,
-          blurCount: currentBlurs,
-          antiCheatLogs: [
-            ...currentLogs,
-            { event: isDisqualified ? `Auto-Submitted on Disqualification with ${currentBlurs} violations` : `Auto-Submitted on Contest Completion with ${currentBlurs} tab blurs`, timestamp: new Date() }
-          ]
-        });
-      }
-      if (currentContest) {
-        await api.post(`/contests/${currentContest._id || currentContest.slug}/session/finish`).catch(() => {});
-      }
-    } catch (e) {
-      console.error('Auto submit error:', e);
-    }
-  };
-
-  const handleManualFinish = async () => {
-    setIsFinishingContest(true);
-    setIsManuallyFinished(true);
-    try {
-      await handleAutoSubmitContest(false, 'Contest manually finished and submitted by candidate.');
-    } finally {
-      setIsFinishingContest(false);
-      setFinishModalState(null);
-    }
-  };
-
+  // Load problem details on problemSlug change
   useEffect(() => {
     fetchProblemDetails();
   }, [problemSlug]);
 
-  const handleContestStarted = async () => {
-    setLoading(true);
-    setContestStartsIn(0);
-    contestStartsInRef.current = 0;
-    setCurrentContestData(prev => (prev ? { ...prev, status: 'Live' } : { status: 'Live' }));
-    const toastId = Date.now();
-    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
-    setTimeout(() => {
-      setTimerToast(p => (p?.id === toastId ? null : p));
-    }, 7000);
-
-    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
-    if (cId) {
-      try {
-        const res = await api.get(`/contests/${cId}`);
-        if (res.data?.contest) {
-          const freshContest = res.data.contest;
-          contestRef.current = freshContest;
-          setCurrentContestData(freshContest);
-          if (freshContest.endTime) {
-            contestEndTimeRef.current = new Date(freshContest.endTime);
-            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
-            setContestTimeLeft(left);
-          }
-          const freshProblems = freshContest.problems || [];
-          if (freshProblems.length > 0) {
-            const first = freshProblems[0];
-            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
-            await fetchProblemDetails(firstSlug);
-          } else {
-            await fetchProblemDetails();
-          }
-        }
-      } catch (err) {
-        console.error('Error unlocking contest questions:', err);
-        await fetchProblemDetails();
-      }
-    } else {
-      await fetchProblemDetails();
-    }
-    armProctoring();
-  };
-
+  // Contest timer tick effect
   useEffect(() => {
     if (contestMode && contest) {
-      // Set or preserve monotonic end timestamp without resetting on prop re-renders
       if (contest.endTime) {
         const parsedEnd = new Date(contest.endTime);
         if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - parsedEnd.getTime()) > 5000) {
@@ -1093,248 +1329,6 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, contest?._id || contest?.id]);
 
-  const fetchProblemDetails = async (targetSlug = problemSlug) => {
-    let slugStr = targetSlug;
-    if (typeof slugStr === 'object' && slugStr !== null) {
-      slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
-    }
-
-    if (slugStr === 'contest-lobby' || !slugStr) {
-      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
-        ? currentContestData.problems
-        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
-      if (contestProblems && contestProblems.length > 0) {
-        const first = contestProblems[0];
-        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
-      }
-    }
-
-    try {
-      setLoading(true);
-      setExecResult(null);
-
-      let data = null;
-
-      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
-        ? currentContestData.problems
-        : (contest?.problems || []);
-
-      if (contestProblems.length > 0 && slugStr) {
-        const matchingContestProb = contestProblems.find(p => {
-          if (!p) return false;
-          if (typeof p === 'string') return p === slugStr;
-          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
-        });
-        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
-          data = matchingContestProb;
-        }
-      }
-
-      if (!data && slugStr && slugStr !== 'contest-lobby') {
-        try {
-          const res = await api.get(`/questions/${slugStr}`);
-          if (res.data?.question || res.data) {
-            data = res.data.question || res.data;
-          }
-        } catch (e) {
-          console.warn('Direct problem fetch fallback:', e);
-        }
-      }
-
-      if (!data && contestMode) {
-        // If in contest mode and direct question fetch failed, query contest details
-        try {
-          const cId = contest?._id || contest?.id || contest?.slug;
-          if (cId) {
-            const cRes = await api.get(`/contests/${cId}`);
-            if (cRes.data?.contest?.problems?.length > 0) {
-              const freshProbs = cRes.data.contest.problems;
-              setCurrentContestData(cRes.data.contest);
-              const firstP = freshProbs[0];
-              if (typeof firstP === 'object' && firstP.description) {
-                data = firstP;
-              } else {
-                const s = typeof firstP === 'object' ? (firstP.slug || firstP._id) : firstP;
-                const qRes = await api.get(`/questions/${s}`);
-                data = qRes.data?.question || qRes.data;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Contest problem refetch error:', err);
-        }
-      }
-
-      if (!data) {
-        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
-        if (pool.length > 0) {
-          data = pool.find(q => q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr)) || pool[0];
-        }
-      }
-
-      // Final fallback so question is never null during active contest mode
-      if (!data && contestMode) {
-        data = {
-          _id: 'default_contest_problem',
-          slug: 'contest-problem-1',
-          title: 'Problem 1',
-          description: 'Problem description is loading or synchronizing with contest server. Select a problem from the dropdown above if available.',
-          difficulty: 'Medium',
-          constraints: 'Standard contest constraints apply.',
-          inputFormat: 'Standard input format.',
-          outputFormat: 'Standard output format.',
-          sampleTestCases: [{ input: '', expectedOutput: '' }],
-          starterCode: defaultBoilerplates
-        };
-      }
-
-      if (data) {
-        setQuestion(data);
-        const pKey = data._id || data.slug || slugStr;
-
-        const loadCodeForLang = (lang) => {
-          try {
-            const saved = localStorage.getItem(`codearena_user_code_${pKey}_${lang}`);
-            if (saved !== null && saved.trim() !== '') return saved;
-          } catch (e) {}
-          return data.starterCode?.[lang] || (lang === 'python' ? data.templateCode : null) || defaultBoilerplates[lang] || '';
-        };
-
-        const freshCodeMap = {
-          python: loadCodeForLang('python'),
-          cpp: loadCodeForLang('cpp'),
-          c: loadCodeForLang('c'),
-          java: loadCodeForLang('java'),
-          javascript: loadCodeForLang('javascript')
-        };
-
-        setCodeMap(freshCodeMap);
-      }
-    } catch (err) {
-      console.error('Error fetching problem details:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLanguageChange = (newLang) => {
-    setLanguage(newLang);
-    const pKey = question?._id || question?.slug || problemSlug;
-    let savedCode = codeMap[newLang];
-
-    if (!savedCode && pKey) {
-      try {
-        const stored = localStorage.getItem(`codearena_user_code_${pKey}_${newLang}`);
-        if (stored !== null && stored.trim() !== '') savedCode = stored;
-      } catch (e) {}
-    }
-
-    if (!savedCode) {
-      savedCode = question?.starterCode?.[newLang] || (newLang === 'python' ? question?.templateCode : null) || defaultBoilerplates[newLang] || '';
-    }
-
-    setCodeMap(prev => ({ ...prev, [newLang]: savedCode }));
-  };
-
-  const handleCodeChange = (val) => {
-    const codeVal = val || '';
-    setCodeMap(prev => ({ ...prev, [language]: codeVal }));
-    const pKey = question?._id || question?.slug || problemSlug;
-    if (pKey) {
-      try {
-        localStorage.setItem(`codearena_user_code_${pKey}_${language}`, codeVal);
-      } catch (e) {}
-    }
-  };
-
-  const handleResetCode = () => {
-    const defaultCode = question?.starterCode?.[language] || (language === 'python' ? question?.templateCode : null) || defaultBoilerplates[language] || '';
-    setCodeMap(prev => ({ ...prev, [language]: defaultCode }));
-    const pKey = question?._id || question?.slug || problemSlug;
-    if (pKey) {
-      try {
-        localStorage.removeItem(`codearena_user_code_${pKey}_${language}`);
-      } catch (e) {}
-    }
-  };
-
-  const handleRunCode = async () => {
-    try {
-      setExecuting(true);
-      setConsoleOpen(true);
-      setExecResult({ status: 'Running', message: 'Executing code against sample test cases...' });
-
-      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
-
-      const res = await api.post('/submissions/run', {
-        questionId: qId,
-        language,
-        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')
-      });
-
-      const anyStderr = (res.data.testResults && res.data.testResults.find(d => d.stderr)?.stderr) || res.data.stderr;
-
-      setExecResult({
-        type: 'run',
-        success: true,
-        testResults: res.data.testResults || [],
-        stdout: res.data.stdout,
-        stderr: anyStderr,
-        executionTime: res.data.executionTime
-      });
-    } catch (err) {
-      setExecResult({
-        type: 'run',
-        success: false,
-        message: err.response?.data?.message || 'Execution error'
-      });
-    } finally {
-      setExecuting(false);
-    }
-  };
-
-  const handleSubmitCode = async () => {
-    try {
-      setExecuting(true);
-      setConsoleOpen(true);
-      setExecResult({ status: 'Evaluating', message: 'Evaluating solution against hidden official test cases...' });
-
-      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
-
-      const res = await api.post('/submissions/submit', {
-        questionId: qId,
-        language,
-        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || ''),
-        contestId: contestMode && contest ? (contest._id || contest.id || contest.slug) : null,
-        blurCount: blurCountRef.current || 0,
-        antiCheatLogs: antiCheatLogsRef.current || []
-      });
-
-      const sub = res.data.submission || res.data;
-      const subScore = sub.score !== undefined ? sub.score : 0;
-      const subStderr = res.data.stderr || sub.stderr || (sub.details && sub.details.find(d => d.stderr)?.stderr);
-      setExecResult({
-        type: 'submit',
-        success: true,
-        verdict: sub.verdict || sub.status || 'Accepted',
-        score: subScore,
-        stderr: subStderr,
-        passedTests: sub.passedTests || sub.testCasesPassed,
-        totalTests: sub.totalTests || sub.totalTestCases,
-        executionTime: sub.executionTime,
-        memory: sub.memory
-      });
-    } catch (err) {
-      setExecResult({
-        type: 'submit',
-        success: false,
-        message: err.response?.data?.message || 'Submission evaluation error'
-      });
-    } finally {
-      setExecuting(false);
-    }
-  };
-
   // Waiting Room View before Contest Starts
   const currentStartMs = (currentContestData?.startTime || contest?.startTime) ? new Date(currentContestData?.startTime || contest?.startTime).getTime() : 0;
   const isTimeInFuture = currentStartMs > Date.now();
@@ -1344,7 +1338,7 @@ export const StudentProblemWorkspace = ({
     !disqualifiedReason &&
     (
       (isTimeInFuture && contestStartsIn > 0) ||
-      (contestStartsIn > 0) ||
+      (contestStartsIn > 0 && currentStartMs > 0 && isTimeInFuture) ||
       (isTimeInFuture && (currentContestData?.status === 'Upcoming' || contest?.status === 'Upcoming')) ||
       (problemSlug === 'contest-lobby' && !question && isTimeInFuture)
     )
