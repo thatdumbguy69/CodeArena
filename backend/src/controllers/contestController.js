@@ -90,7 +90,18 @@ const getAllContests = async (req, res) => {
       return res.json({ contests: computed });
     } else {
       const contests = inMemoryStore.contests || [];
-      const computed = contests.map(c => computeContestRealtime(c));
+      const qList = inMemoryStore.questions || [];
+      const computed = contests.map(c => {
+        const comp = computeContestRealtime(c);
+        if (comp.problems && comp.problems.length > 0) {
+          comp.problems = comp.problems.map(p => {
+            if (typeof p === 'object' && p !== null) return p;
+            const found = qList.find(q => String(q._id) === String(p) || q.slug === String(p));
+            return found || p;
+          });
+        }
+        return comp;
+      });
 
       if (req.user && req.user.id) {
         const mySessions = (inMemoryStore.contestSessions || []).filter(s => String(s.user) === String(req.user.id));
@@ -239,6 +250,13 @@ const getContestByIdOrSlug = async (req, res) => {
       const computed = computeContestRealtime(contest);
       if (computed && computed.status === 'Upcoming' && (!req.user || req.user.role !== 'admin')) {
         computed.problems = [];
+      } else if (computed && computed.problems && computed.problems.length > 0) {
+        const qList = inMemoryStore.questions || [];
+        computed.problems = computed.problems.map(p => {
+          if (typeof p === 'object' && p !== null) return p;
+          const found = qList.find(q => String(q._id) === String(p) || q.slug === String(p));
+          return found || p;
+        });
       }
 
       if (req.user && req.user.role === 'admin') {

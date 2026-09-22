@@ -25,6 +25,7 @@ import Editor from '@monaco-editor/react';
 import api from '../../services/api';
 import { ResetCodeModal } from '../../components/student/modals/ResetCodeModal';
 import { CompileErrorDisplay } from '../../components/common/CompileErrorDisplay';
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -47,7 +48,7 @@ const defaultBoilerplates = {
   javascript: 'const fs = require("fs");\n\nfunction solve() {\n    const input = fs.readFileSync(0, "utf-8").trim().split(/\\s+/);\n    if (!input || input.length === 0) return;\n    // Write your solution here...\n}\n\nsolve();'
 };
 
-export const StudentProblemWorkspace = ({
+const StudentProblemWorkspaceInner = ({
   problemSlug,
   contestMode = false,
   contest = null,
@@ -58,36 +59,39 @@ export const StudentProblemWorkspace = ({
   const { user } = useAuth();
   const { socket, joinContest, emitBlurEvent } = useSocket();
 
+  // Basic Problem & Contest State
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [practiceProblemsList, setPracticeProblemsList] = useState(allProblems || []);
   const [currentContestData, setCurrentContestData] = useState(contest);
 
-  useEffect(() => {
-    if (contest) {
-      setCurrentContestData(prev => {
-        if (contest.problems && contest.problems.length > 0) {
-          return { ...prev, ...contest };
-        }
-        return { ...contest, problems: (prev?.problems && prev.problems.length > 0) ? prev.problems : contest.problems };
-      });
-    }
-  }, [contest]);
+  // Editor State
+  const [language, setLanguage] = useState('python');
+  const [codeMap, setCodeMap] = useState({});
+  const [resetModalOpen, setResetModalOpen] = useState(false);
 
-  // Suppress Chromium Fullscreen top hover exit UI pill
-  useEffect(() => {
-    if (!contestMode) return;
-    const preventTopPill = (e) => {
-      if (e.clientY <= 4) {
-        e.stopPropagation();
-      }
-    };
-    window.addEventListener('mousemove', preventTopPill, { capture: true, passive: false });
-    return () => {
-      window.removeEventListener('mousemove', preventTopPill, { capture: true });
-    };
-  }, [contestMode]);
+  // Execution Console State
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [execResult, setExecResult] = useState(null);
 
+  // Proctoring & Modals State
+  const [blurCount, setBlurCount] = useState(0);
+  const [securityAlert, setSecurityAlert] = useState(null);
+  const [antiCheatLogs, setAntiCheatLogs] = useState([]);
+  const [isManuallyFinished, setIsManuallyFinished] = useState(false);
+  const [finishModalState, setFinishModalState] = useState(null); // null | 'locked' | 'confirm'
+  const [isFinishingContest, setIsFinishingContest] = useState(false);
+  const [disqualifiedReason, setDisqualifiedReason] = useState(null);
+  const [reinstatedModalOpen, setReinstatedModalOpen] = useState(false);
+  const [reinstatedCountdown, setReinstatedCountdown] = useState(20);
+  const [warningCountdown, setWarningCountdown] = useState(15);
+  const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement));
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [firstEntryModalOpen, setFirstEntryModalOpen] = useState(false);
+  const [timerToast, setTimerToast] = useState(null);
+
+  // Contest Timing Calculations
   const [contestTimeLeft, setContestTimeLeft] = useState(() => {
     if (contest?.endTime) {
       return Math.max(0, Math.floor((new Date(contest.endTime).getTime() - Date.now()) / 1000));
@@ -95,7 +99,6 @@ export const StudentProblemWorkspace = ({
     return contest?.remainingSecs || 0;
   });
 
-  // Countdown timer until contest begins
   const [contestStartsIn, setContestStartsIn] = useState(() => {
     if (!contestMode || !contest) return 0;
     if (contest.startTime) {
@@ -115,57 +118,771 @@ export const StudentProblemWorkspace = ({
     const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
     const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
     if (isUpcoming) return false;
-    if (contest.status === 'Ended') return true;
-    if (endMs <= nowMs && startMs <= nowMs) return true;
+    if (contest.status === 'Ended' && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
+    if (contest.userSession?.isFinished) return true;
+    if (endMs <= nowMs && startMs <= nowMs && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
     return false;
   });
 
-  const [timerToast, setTimerToast] = useState(null);
+  const canFinishContest = contestTimeLeft <= 15 * 60;
+
+  // Proctoring Keys & Storage
+  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
+  const userId = user?._id || user?.id || 'student';
+  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
+  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
+
+  // All React Refs Defined at Top
+  const editorRef = React.useRef(null);
+  const contestClipboardRef = React.useRef('');
   const contestEndTimeRef = React.useRef(
     contest?.endTime
       ? new Date(contest.endTime)
       : (contest?.remainingSecs ? new Date(Date.now() + contest.remainingSecs * 1000) : null)
   );
-
-  const [isManuallyFinished, setIsManuallyFinished] = useState(false);
-  const [finishModalState, setFinishModalState] = useState(null); // null | 'locked' | 'confirm'
-  const [isFinishingContest, setIsFinishingContest] = useState(false);
-  const [disqualifiedReason, setDisqualifiedReason] = useState(null);
-  const [reinstatedModalOpen, setReinstatedModalOpen] = useState(false);
-  const [reinstatedCountdown, setReinstatedCountdown] = useState(20);
   const reinstatedTimerRef = React.useRef(null);
-  const [warningCountdown, setWarningCountdown] = useState(15);
   const warningTimerRef = React.useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement));
-  const [warningModalOpen, setWarningModalOpen] = useState(false);
-  const [firstEntryModalOpen, setFirstEntryModalOpen] = useState(false);
-
-  const canFinishContest = contestTimeLeft <= 15 * 60;
-
   const hasEnteredContestRef = React.useRef(false);
   const isProctoringArmedRef = React.useRef(false);
   const lastViolationTimeRef = React.useRef(0);
   const proctoringArmTimerRef = React.useRef(null);
 
+  const codeMapRef = React.useRef(codeMap);
+  const languageRef = React.useRef(language);
+  const questionRef = React.useRef(question);
+  const contestRef = React.useRef(contest);
+  const contestCompletedRef = React.useRef(contestCompleted);
+  const contestStartsInRef = React.useRef(contestStartsIn);
+  const blurCountRef = React.useRef(blurCount);
+  const antiCheatLogsRef = React.useRef(antiCheatLogs);
+
+  // Synchronize dynamic refs to latest state
+  useEffect(() => { codeMapRef.current = codeMap; }, [codeMap]);
+  useEffect(() => { languageRef.current = language; }, [language]);
+  useEffect(() => { questionRef.current = question; }, [question]);
+  useEffect(() => { contestRef.current = contest; }, [contest]);
+  useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
+  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
+  useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
+  useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
+
+  // Handler Functions
   const armProctoring = () => {
     if (proctoringArmTimerRef.current) clearTimeout(proctoringArmTimerRef.current);
     hasEnteredContestRef.current = true;
-    // 3.5s grace period so any browser window transition / fullscreen animation settles cleanly
     proctoringArmTimerRef.current = setTimeout(() => {
       isProctoringArmedRef.current = true;
     }, 3500);
   };
 
-  const contestId = contest?._id || contest?.slug || contest?.id || 'default_contest';
-  const userId = user?._id || user?.id || 'student';
-  const reloadFlagKey = `codearena_contest_reload_${contestId}_${userId}`;
-  const activeSessionKey = `codearena_contest_active_${contestId}_${userId}`;
-  const blurCountKey = `codearena_contest_blurs_${contestId}_${userId}`;
+  const enterFullscreen = () => {
+    try {
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      const elem = document.documentElement;
+      const fsOpts = { navigationUI: 'hide' };
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen(fsOpts).catch(() => {
+          elem.requestFullscreen().catch(() => {});
+        });
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
 
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
+      }
+
+      armProctoring();
+      setFirstEntryModalOpen(false);
+      setWarningModalOpen(false);
+    } catch (e) {
+      console.warn('Enter fullscreen error:', e);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    } catch (e) {
+      console.warn('Fullscreen toggle failed:', e);
+    }
+  };
+
+  const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
+    if (contestCompletedRef.current && !isDisqualified) return;
+    contestCompletedRef.current = true;
+    setContestCompleted(true);
+    isProctoringArmedRef.current = false;
+
+    if (isDisqualified) {
+      setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
+    }
+
+    const currentQuestion = questionRef.current;
+    const currentLang = languageRef.current || 'python';
+    const currentCodeMap = codeMapRef.current || {};
+    const currentContest = contestRef.current;
+    const userCode = currentCodeMap[currentLang];
+    const currentBlurs = blurCountRef.current || 0;
+    const currentLogs = antiCheatLogsRef.current || [];
+
+    try {
+      if (userCode && userCode.trim().length > 0 && currentQuestion) {
+        await api.post('/submissions/submit', {
+          questionId: currentQuestion._id || currentQuestion.id || currentQuestion.slug,
+          language: currentLang,
+          code: userCode,
+          contestId: currentContest?._id || currentContest?.slug,
+          blurCount: currentBlurs,
+          antiCheatLogs: [
+            ...currentLogs,
+            { event: isDisqualified ? `Auto-Submitted on Disqualification with ${currentBlurs} violations` : `Auto-Submitted on Contest Completion with ${currentBlurs} tab blurs`, timestamp: new Date() }
+          ]
+        });
+      }
+      if (currentContest) {
+        await api.post(`/contests/${currentContest._id || currentContest.slug}/session/finish`).catch(() => {});
+      }
+    } catch (e) {
+      console.error('Auto submit error:', e);
+    }
+  };
+
+  const handleFocusLoss = (reason = 'Tab switch / focus loss') => {
+    if (contestCompletedRef.current || !isProctoringArmedRef.current) return;
+
+    const now = Date.now();
+    if (now - lastViolationTimeRef.current < 2000) {
+      return;
+    }
+    lastViolationTimeRef.current = now;
+
+    const nextCount = blurCountRef.current + 1;
+    setBlurCount(nextCount);
+    blurCountRef.current = nextCount;
+
+    const maxAllowed = contestRef.current?.maxAllowedBlurs !== undefined 
+      ? Math.max(1, parseInt(contestRef.current.maxAllowedBlurs, 10) || 2) 
+      : 2;
+
+    const newLog = {
+      event: `${reason} violation #${nextCount}`,
+      timestamp: new Date()
+    };
+    setAntiCheatLogs(prev => [...prev, newLog]);
+
+    const cId = contestRef.current?._id || contestRef.current?.slug || contestRef.current?.id;
+    if (cId) {
+      emitBlurEvent({
+        contestId: cId,
+        userId: user?._id || user?.id,
+        userName: user?.name || 'Student',
+        teamName: user?.teamName || user?.name || 'Team',
+        email: user?.email,
+        blurCount: nextCount,
+        maxAllowedBlurs: maxAllowed,
+        isDisqualified: nextCount >= maxAllowed,
+        disqualificationReason: nextCount >= maxAllowed ? `Exceeded maximum allowed window focus / fullscreen violations (${nextCount}/${maxAllowed})` : '',
+        event: `${reason} #${nextCount}`
+      });
+
+      api.post(`/contests/${cId}/session/event`, {
+        event: `${reason} #${nextCount}`,
+        blurCount: nextCount
+      }).catch(() => {});
+    }
+
+    if (nextCount === 1) {
+      setWarningModalOpen(true);
+      setWarningCountdown(15);
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+
+      warningTimerRef.current = setInterval(() => {
+        setWarningCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(warningTimerRef.current);
+            setWarningModalOpen(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      setSecurityAlert(`⚠️ PROCTORING WARNING (Violation 1 of ${maxAllowed}): ${reason} detected! Next violation will result in immediate disqualification.`);
+    } else if (nextCount >= maxAllowed) {
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+      setWarningModalOpen(false);
+      handleAutoSubmitContest(true, `You have been disqualified for exceeding the maximum tab switch / fullscreen exit threshold (${nextCount}/${maxAllowed} violations). Only a contest administrator can reinstate your qualification.`);
+    }
+  };
+
+  const fetchProblemDetails = async (targetSlug = problemSlug) => {
+    let slugStr = targetSlug;
+    if (typeof slugStr === 'object' && slugStr !== null) {
+      slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
+    }
+
+    if (slugStr === 'contest-lobby' || !slugStr) {
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
+      if (contestProblems && contestProblems.length > 0) {
+        const first = contestProblems[0];
+        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+      }
+    }
+
+    try {
+      setLoading(true);
+      setExecResult(null);
+
+      let data = null;
+
+      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
+        ? currentContestData.problems
+        : (contest?.problems || []);
+
+      if (contestProblems.length > 0 && slugStr) {
+        const matchingContestProb = contestProblems.find(p => {
+          if (!p) return false;
+          if (typeof p === 'string') return p === slugStr;
+          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
+        });
+        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
+          data = matchingContestProb;
+        }
+      }
+
+      if (!data && slugStr && slugStr !== 'contest-lobby') {
+        try {
+          const res = await api.get(`/questions/${slugStr}`);
+          if (res.data?.question || res.data) {
+            data = res.data.question || res.data;
+          }
+        } catch (e) {
+          console.warn('Direct problem fetch fallback:', e);
+        }
+      }
+
+      if (!data && contestMode) {
+        try {
+          const cId = contest?._id || contest?.id || contest?.slug;
+          if (cId) {
+            const cRes = await api.get(`/contests/${cId}`);
+            if (cRes.data?.contest?.problems?.length > 0) {
+              const freshProbs = cRes.data.contest.problems;
+              setCurrentContestData(cRes.data.contest);
+              const firstP = freshProbs[0];
+              if (typeof firstP === 'object' && firstP.description) {
+                data = firstP;
+              } else {
+                const s = typeof firstP === 'object' ? (firstP.slug || firstP._id) : firstP;
+                const qRes = await api.get(`/questions/${s}`);
+                data = qRes.data?.question || qRes.data;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Contest problem refetch error:', err);
+        }
+      }
+
+      if (!data) {
+        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
+        if (pool.length > 0) {
+          data = pool.find(q => q && (q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr))) || pool[0];
+        }
+      }
+
+      if (!data && contestMode) {
+        data = {
+          _id: 'default_contest_problem',
+          slug: 'contest-problem-1',
+          title: 'Problem 1',
+          description: 'Problem description is loading or synchronizing with contest server. Select a problem from the dropdown above if available.',
+          difficulty: 'Medium',
+          constraints: 'Standard contest constraints apply.',
+          inputFormat: 'Standard input format.',
+          outputFormat: 'Standard output format.',
+          sampleTestCases: [{ input: '', expectedOutput: '' }],
+          starterCode: defaultBoilerplates
+        };
+      }
+
+      if (data) {
+        setQuestion(data);
+        const pKey = data._id || data.slug || slugStr;
+
+        const loadCodeForLang = (lang) => {
+          try {
+            const saved = localStorage.getItem(`codearena_user_code_${pKey}_${lang}`);
+            if (saved !== null && saved.trim() !== '') return saved;
+          } catch (e) {}
+          return data.starterCode?.[lang] || (lang === 'python' ? data.templateCode : null) || defaultBoilerplates[lang] || '';
+        };
+
+        const freshCodeMap = {
+          python: loadCodeForLang('python'),
+          cpp: loadCodeForLang('cpp'),
+          c: loadCodeForLang('c'),
+          java: loadCodeForLang('java'),
+          javascript: loadCodeForLang('javascript')
+        };
+
+        setCodeMap(freshCodeMap);
+      }
+    } catch (err) {
+      console.error('Error fetching problem details:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleContestStarted = async () => {
+    setLoading(true);
+    setContestStartsIn(0);
+    contestStartsInRef.current = 0;
+    setCurrentContestData(prev => (prev ? { ...prev, status: 'Live' } : { status: 'Live' }));
+    const toastId = Date.now();
+    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
+    setTimeout(() => {
+      setTimerToast(p => (p?.id === toastId ? null : p));
+    }, 7000);
+
+    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
+    if (cId) {
+      try {
+        const res = await api.get(`/contests/${cId}`);
+        if (res.data?.contest) {
+          const freshContest = res.data.contest;
+          contestRef.current = freshContest;
+          setCurrentContestData(freshContest);
+          if (freshContest.endTime) {
+            contestEndTimeRef.current = new Date(freshContest.endTime);
+            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
+            setContestTimeLeft(left);
+          }
+          const freshProblems = freshContest.problems || [];
+          if (freshProblems.length > 0) {
+            const first = freshProblems[0];
+            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
+            await fetchProblemDetails(firstSlug);
+          } else {
+            await fetchProblemDetails();
+          }
+        }
+      } catch (err) {
+        console.error('Error unlocking contest questions:', err);
+        await fetchProblemDetails();
+      }
+    } else {
+      await fetchProblemDetails();
+    }
+    armProctoring();
+  };
+
+  const activeProblemsList = React.useMemo(() => {
+    let list = [];
+    if (contestMode) {
+      const cProbs = currentContestData?.problems || contest?.problems;
+      if (Array.isArray(cProbs) && cProbs.length > 0) {
+        list = cProbs.map((p, idx) => {
+          if (typeof p === 'string') {
+            const found = (allProblems || []).concat(practiceProblemsList || []).find(
+              q => String(q._id) === p || String(q.id) === p || q.slug === p
+            );
+            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
+          } else if (p && typeof p === 'object') {
+            if (!p.title || p.title === p._id || p.title === p.slug) {
+              const pId = p._id || p.id || p.slug;
+              const found = (allProblems || []).concat(practiceProblemsList || []).find(
+                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
+              );
+              if (found) return { ...found, ...p };
+            }
+            return p;
+          }
+          return p;
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
+    }
+    if (list.length === 0 && question) {
+      list = [question];
+    }
+    return list;
+  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems, question]);
+  
+  const getProblemIdentifier = (p) => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    return p.slug || p._id || p.id || '';
+  };
+
+  const currentProblemIndex = activeProblemsList.findIndex(p => {
+    if (!p || !question) return false;
+    const pId = typeof p === 'string' ? p : (p._id || p.id);
+    const pSlug = typeof p === 'object' ? p.slug : null;
+    const pTitle = typeof p === 'object' ? p.title : null;
+
+    const qId = question._id || question.id;
+    const qSlug = question.slug;
+    const qTitle = question.title;
+
+    const idMatch = pId && qId && String(pId) === String(qId);
+    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
+                      (pId && qSlug && String(pId) === String(qSlug)) ||
+                      (pSlug && qId && String(pSlug) === String(qId));
+    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
+
+    return idMatch || slugMatch || titleMatch;
+  });
+
+  const selectedOptionValue = (() => {
+    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
+      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
+    }
+    if (question) {
+      const matched = activeProblemsList.find(p => {
+        const pId = typeof p === 'string' ? p : (p._id || p.id);
+        const pSlug = typeof p === 'object' ? p.slug : null;
+        const pTitle = typeof p === 'object' ? p.title : null;
+        return (
+          (pSlug && question.slug && pSlug === question.slug) ||
+          (pId && question._id && String(pId) === String(question._id)) ||
+          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
+        );
+      });
+      if (matched) return getProblemIdentifier(matched);
+    }
+    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
+  })();
+
+  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
+  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
+
+  const handleGoToPrevQuestion = () => {
+    if (hasPrevQuestion) {
+      const prevP = activeProblemsList[currentProblemIndex - 1];
+      fetchProblemDetails(getProblemIdentifier(prevP));
+    }
+  };
+
+  const handleGoToNextQuestion = () => {
+    if (hasNextQuestion) {
+      const nextP = activeProblemsList[currentProblemIndex + 1];
+      fetchProblemDetails(getProblemIdentifier(nextP));
+    }
+  };
+
+  const handleManualFinish = async () => {
+    setIsFinishingContest(true);
+    setIsManuallyFinished(true);
+    try {
+      await handleAutoSubmitContest(false, 'Contest manually finished and submitted by candidate.');
+    } finally {
+      setIsFinishingContest(false);
+      setFinishModalState(null);
+    }
+  };
+
+  const handleLanguageChange = (newLang) => {
+    setLanguage(newLang);
+    const pKey = question?._id || question?.slug || problemSlug;
+    let savedCode = codeMap[newLang];
+
+    if (!savedCode && pKey) {
+      try {
+        const stored = localStorage.getItem(`codearena_user_code_${pKey}_${newLang}`);
+        if (stored !== null && stored.trim() !== '') savedCode = stored;
+      } catch (e) {}
+    }
+
+    if (!savedCode) {
+      savedCode = question?.starterCode?.[newLang] || (newLang === 'python' ? question?.templateCode : null) || defaultBoilerplates[newLang] || '';
+    }
+
+    setCodeMap(prev => ({ ...prev, [newLang]: savedCode }));
+  };
+
+  const handleCodeChange = (val) => {
+    const codeVal = val || '';
+    setCodeMap(prev => ({ ...prev, [language]: codeVal }));
+    const pKey = question?._id || question?.slug || problemSlug;
+    if (pKey) {
+      try {
+        localStorage.setItem(`codearena_user_code_${pKey}_${language}`, codeVal);
+      } catch (e) {}
+    }
+  };
+
+  const handleResetCode = () => {
+    const defaultCode = question?.starterCode?.[language] || (language === 'python' ? question?.templateCode : null) || defaultBoilerplates[language] || '';
+    setCodeMap(prev => ({ ...prev, [language]: defaultCode }));
+    const pKey = question?._id || question?.slug || problemSlug;
+    if (pKey) {
+      try {
+        localStorage.removeItem(`codearena_user_code_${pKey}_${language}`);
+      } catch (e) {}
+    }
+  };
+
+  const handleRunCode = async () => {
+    try {
+      setExecuting(true);
+      setConsoleOpen(true);
+      setExecResult({ status: 'Running', message: 'Executing code against sample test cases...' });
+
+      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
+
+      const res = await api.post('/submissions/run', {
+        questionId: qId,
+        language,
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')
+      });
+
+      const anyStderr = (res.data.testResults && res.data.testResults.find(d => d.stderr)?.stderr) || res.data.stderr;
+
+      setExecResult({
+        type: 'run',
+        success: true,
+        testResults: res.data.testResults || [],
+        stdout: res.data.stdout,
+        stderr: anyStderr,
+        executionTime: res.data.executionTime
+      });
+    } catch (err) {
+      setExecResult({
+        type: 'run',
+        success: false,
+        message: err.response?.data?.message || 'Execution error'
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    try {
+      setExecuting(true);
+      setConsoleOpen(true);
+      setExecResult({ status: 'Evaluating', message: 'Evaluating solution against hidden official test cases...' });
+
+      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
+
+      const res = await api.post('/submissions/submit', {
+        questionId: qId,
+        language,
+        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || ''),
+        contestId: contestMode && contest ? (contest._id || contest.id || contest.slug) : null,
+        blurCount: blurCountRef.current || 0,
+        antiCheatLogs: antiCheatLogsRef.current || []
+      });
+
+      const sub = res.data.submission || res.data;
+      const subScore = sub.score !== undefined ? sub.score : 0;
+      const subStderr = res.data.stderr || sub.stderr || (sub.details && sub.details.find(d => d.stderr)?.stderr);
+      setExecResult({
+        type: 'submit',
+        success: true,
+        verdict: sub.verdict || sub.status || 'Accepted',
+        score: subScore,
+        stderr: subStderr,
+        passedTests: sub.passedTests || sub.testCasesPassed,
+        totalTests: sub.totalTests || sub.totalTestCases,
+        executionTime: sub.executionTime,
+        memory: sub.memory
+      });
+    } catch (err) {
+      setExecResult({
+        type: 'submit',
+        success: false,
+        message: err.response?.data?.message || 'Submission evaluation error'
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    if (!contestMode) return;
+
+    const copyInternal = () => {
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+          }
+        }
+      }
+    };
+
+    const cutInternal = () => {
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editor.getModel()?.getValueInRange(selection);
+        if (selectedText) {
+          contestClipboardRef.current = selectedText;
+          try {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          } catch (e) {}
+          editor.executeEdits('contest-cut', [{
+            range: selection,
+            text: '',
+            forceMoveMarkers: true
+          }]);
+          editor.pushUndoStop();
+        }
+      } else {
+        const pos = editor.getPosition();
+        if (pos) {
+          const model = editor.getModel();
+          const lineText = model?.getLineContent(pos.lineNumber);
+          if (lineText !== undefined && model) {
+            contestClipboardRef.current = lineText + '\n';
+            try {
+              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
+            } catch (e) {}
+            const range = pos.lineNumber < model.getLineCount()
+              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
+              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
+            editor.executeEdits('contest-cut-line', [{
+              range,
+              text: '',
+              forceMoveMarkers: true
+            }]);
+            editor.pushUndoStop();
+          }
+        }
+      }
+    };
+
+    const pasteInternal = () => {
+      if (!contestClipboardRef.current) {
+        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
+        setTimeout(() => setSecurityAlert(null), 3500);
+        return;
+      }
+      const selection = editor.getSelection();
+      if (selection) {
+        editor.executeEdits('contest-paste', [{
+          range: selection,
+          text: contestClipboardRef.current,
+          forceMoveMarkers: true
+        }]);
+        editor.pushUndoStop();
+      }
+    };
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, copyInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, cutInternal);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteInternal);
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, pasteInternal);
+
+    editor.onKeyDown((e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }
+    });
+
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener('copy', (e) => {
+        copyInternal();
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('cut', (e) => {
+        if (e.clipboardData && contestClipboardRef.current) {
+          e.clipboardData.setData('text/plain', contestClipboardRef.current);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      domNode.addEventListener('paste', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        pasteInternal();
+      }, true);
+
+      domNode.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
+        setTimeout(() => setSecurityAlert(null), 3000);
+      }, true);
+    }
+  };
+
+  // Sync contest props to currentContestData
+  useEffect(() => {
+    if (contest) {
+      setCurrentContestData(prev => {
+        if (contest.problems && contest.problems.length > 0) {
+          return { ...prev, ...contest };
+        }
+        return { ...contest, problems: (prev?.problems && prev.problems.length > 0) ? prev.problems : contest.problems };
+      });
+    }
+  }, [contest]);
+
+  // Suppress Chromium Fullscreen top hover exit UI pill
+  useEffect(() => {
+    if (!contestMode) return;
+    const preventTopPill = (e) => {
+      if (e.clientY <= 10) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('mousemove', preventTopPill, { capture: true, passive: false });
+    window.addEventListener('pointermove', preventTopPill, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('mousemove', preventTopPill, { capture: true });
+      window.removeEventListener('pointermove', preventTopPill, { capture: true });
+    };
+  }, [contestMode]);
+
+  // Coordinator bypass & reload check
   useEffect(() => {
     if (!contestMode) return;
 
-    // Check for coordinator emergency refresh bypass
     const isCoordinatorBypass = sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true';
     if (isCoordinatorBypass) {
       sessionStorage.removeItem('codearena_coordinator_bypass_refresh');
@@ -191,12 +908,12 @@ export const StudentProblemWorkspace = ({
 
     if (isReload && !contestCompletedRef.current) {
       sessionStorage.removeItem(reloadFlagKey);
-      // Automatically prompt fullscreen and trigger violation
       setFirstEntryModalOpen(false);
       handleFocusLoss('Page refreshed during contest');
     }
   }, [contestMode]);
 
+  // Practice problems fallback loader
   useEffect(() => {
     if (!contestMode && (!allProblems || allProblems.length === 0)) {
       api.get('/questions').then(res => {
@@ -208,6 +925,7 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, allProblems]);
 
+  // Join contest room & check fullscreen
   useEffect(() => {
     if (contestMode && contest) {
       const cId = contest._id || contest.id || contest.slug;
@@ -220,7 +938,6 @@ export const StudentProblemWorkspace = ({
         email: user?.email
       });
 
-      // Check if already in fullscreen or prompt student to enter fullscreen
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
       if (!isFs) {
         setFirstEntryModalOpen(true);
@@ -230,6 +947,7 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, contest?._id, user?._id]);
 
+  // Socket real-time event listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -357,8 +1075,9 @@ export const StudentProblemWorkspace = ({
       if (reinstatedTimerRef.current) clearInterval(reinstatedTimerRef.current);
       if (warningTimerRef.current) clearInterval(warningTimerRef.current);
     };
-  }, [socket]);
+  }, [socket, contestMode]);
 
+  // Qualification status polling
   useEffect(() => {
     if (!contestMode || !disqualifiedReason || !contest) return;
     const cId = contest._id || contest.id || contest.slug;
@@ -374,6 +1093,7 @@ export const StudentProblemWorkspace = ({
     return () => clearInterval(pollInterval);
   }, [contestMode, disqualifiedReason, contest?._id, contest?.slug]);
 
+  // Fullscreen change listener
   useEffect(() => {
     const handleFSChange = () => {
       const isFsNow = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
@@ -407,154 +1127,10 @@ export const StudentProblemWorkspace = ({
     };
   }, [contestMode, contestStartsIn]);
 
-  const enterFullscreen = () => {
-    try {
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-      const elem = document.documentElement;
-      const fsOpts = { navigationUI: 'hide' };
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen(fsOpts).catch(() => {
-          elem.requestFullscreen().catch(() => {});
-        });
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      }
-
-      if (navigator.keyboard && navigator.keyboard.lock) {
-        navigator.keyboard.lock(['Escape']).catch(() => {});
-      }
-
-      armProctoring();
-      setFirstEntryModalOpen(false);
-      setWarningModalOpen(false);
-    } catch (e) {
-      console.warn('Enter fullscreen error:', e);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    try {
-      if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } else {
-        enterFullscreen();
-      }
-    } catch (e) {
-      console.warn('Fullscreen toggle failed:', e);
-    }
-  };
-
-  // Editor State
-  const [language, setLanguage] = useState('python');
-  const [codeMap, setCodeMap] = useState({});
-  const [resetModalOpen, setResetModalOpen] = useState(false);
-
-  // Execution Console State
-  const [consoleOpen, setConsoleOpen] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [execResult, setExecResult] = useState(null);
-
-  // Anti-Cheat Proctoring State
-  const editorRef = React.useRef(null);
-  const contestClipboardRef = React.useRef('');
-  const [blurCount, setBlurCount] = useState(0);
-  const [securityAlert, setSecurityAlert] = useState(null);
-  const [antiCheatLogs, setAntiCheatLogs] = useState([]);
-
-  // Refs for callbacks
-  const codeMapRef = React.useRef(codeMap);
-  const languageRef = React.useRef(language);
-  const questionRef = React.useRef(question);
-  const contestRef = React.useRef(contest);
-  const contestCompletedRef = React.useRef(contestCompleted);
-  const contestStartsInRef = React.useRef(contestStartsIn);
-  const blurCountRef = React.useRef(blurCount);
-  const antiCheatLogsRef = React.useRef(antiCheatLogs);
-
-  useEffect(() => { codeMapRef.current = codeMap; }, [codeMap]);
-  useEffect(() => { languageRef.current = language; }, [language]);
-  useEffect(() => { questionRef.current = question; }, [question]);
-  useEffect(() => { contestRef.current = contest; }, [contest]);
-  useEffect(() => { contestCompletedRef.current = contestCompleted; }, [contestCompleted]);
-  useEffect(() => { contestStartsInRef.current = contestStartsIn; }, [contestStartsIn]);
-  useEffect(() => { blurCountRef.current = blurCount; }, [blurCount]);
-  useEffect(() => { antiCheatLogsRef.current = antiCheatLogs; }, [antiCheatLogs]);
-
-  const handleFocusLoss = (reason = 'Tab switch / focus loss') => {
-    if (contestCompletedRef.current || !isProctoringArmedRef.current) return;
-
-    const now = Date.now();
-    if (now - lastViolationTimeRef.current < 2000) {
-      return;
-    }
-    lastViolationTimeRef.current = now;
-
-    const nextCount = blurCountRef.current + 1;
-    setBlurCount(nextCount);
-    blurCountRef.current = nextCount;
-
-    const maxAllowed = contestRef.current?.maxAllowedBlurs !== undefined 
-      ? Math.max(1, parseInt(contestRef.current.maxAllowedBlurs, 10) || 2) 
-      : 2;
-
-    const newLog = {
-      event: `${reason} violation #${nextCount}`,
-      timestamp: new Date()
-    };
-    setAntiCheatLogs(prev => [...prev, newLog]);
-
-    const cId = contestRef.current?._id || contestRef.current?.slug || contestRef.current?.id;
-    if (cId) {
-      emitBlurEvent({
-        contestId: cId,
-        userId: user?._id || user?.id,
-        userName: user?.name || 'Student',
-        teamName: user?.teamName || user?.name || 'Team',
-        email: user?.email,
-        blurCount: nextCount,
-        maxAllowedBlurs: maxAllowed,
-        isDisqualified: nextCount >= maxAllowed,
-        disqualificationReason: nextCount >= maxAllowed ? `Exceeded maximum allowed window focus / fullscreen violations (${nextCount}/${maxAllowed})` : '',
-        event: `${reason} #${nextCount}`
-      });
-
-      api.post(`/contests/${cId}/session/event`, {
-        event: `${reason} #${nextCount}`,
-        blurCount: nextCount
-      }).catch(() => {});
-    }
-
-    if (nextCount === 1) {
-      setWarningModalOpen(true);
-      setWarningCountdown(15);
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-
-      warningTimerRef.current = setInterval(() => {
-        setWarningCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(warningTimerRef.current);
-            setWarningModalOpen(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      setSecurityAlert(`⚠️ PROCTORING WARNING (Violation 1 of ${maxAllowed}): ${reason} detected! Next violation will result in immediate disqualification.`);
-    } else if (nextCount >= maxAllowed) {
-      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-      setWarningModalOpen(false);
-      handleAutoSubmitContest(true, `You have been disqualified for exceeding the maximum tab switch / fullscreen exit threshold (${nextCount}/${maxAllowed} violations). Only a contest administrator can reinstate your qualification.`);
-    }
-  };
-
+  // Anti-cheat keyboard, mouse, and focus event listeners
   useEffect(() => {
     if (!contestMode || contestCompleted || contestStartsIn > 0) return;
 
-    // 1. Right Click Prevention in Contest
     const handleContextMenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -563,7 +1139,6 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 2. Isolated Internal Contest Copy / Cut / Paste (Smart Interviews style)
     const handleCopy = (e) => {
       if (editorRef.current?.hasTextFocus && editorRef.current.hasTextFocus()) {
         return;
@@ -612,12 +1187,10 @@ export const StudentProblemWorkspace = ({
       return false;
     };
 
-    // 3. Prevent Refresh & Route Keyboard Shortcuts (F5, Ctrl+R, Ctrl+V, Shift+Insert) + Hidden Coordinator Refresh
     const handleKeyDown = (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const key = (e.key || '').toLowerCase();
 
-      // Hidden Coordinator Emergency Refresh: Ctrl + Alt + Shift + R OR Ctrl + Shift + F5
       const isCoordinatorRefresh = 
         (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'r') ||
         (isCtrlOrCmd && e.shiftKey && (key === 'f5' || e.keyCode === 116));
@@ -631,7 +1204,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Hidden Coordinator Emergency Exit Fullscreen: Ctrl + Alt + Shift + X OR Ctrl + Shift + Esc
       const isCoordinatorExitFs = 
         (isCtrlOrCmd && e.shiftKey && e.altKey && key === 'x') ||
         (isCtrlOrCmd && e.shiftKey && key === 'escape');
@@ -647,7 +1219,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Refresh blocking for students
       if (key === 'f5' || (isCtrlOrCmd && key === 'r')) {
         e.preventDefault();
         e.stopPropagation();
@@ -656,7 +1227,6 @@ export const StudentProblemWorkspace = ({
         return false;
       }
 
-      // Intercept Paste shortcut (Ctrl+V / Shift+Insert) to only use internal contest clipboard
       if ((isCtrlOrCmd && key === 'v') || (e.shiftKey && key === 'insert')) {
         e.preventDefault();
         e.stopPropagation();
@@ -680,7 +1250,6 @@ export const StudentProblemWorkspace = ({
       }
     };
 
-    // 4. Beforeunload Warning & Reload Flag
     const handleBeforeUnload = (e) => {
       if (sessionStorage.getItem('codearena_coordinator_bypass_refresh') === 'true') {
         return;
@@ -697,7 +1266,6 @@ export const StudentProblemWorkspace = ({
       }
     };
 
-    // 5. Blur & Visibility Change Focus Loss
     const onBlur = () => {
       if (isProctoringArmedRef.current) {
         if (document.hidden) {
@@ -743,242 +1311,14 @@ export const StudentProblemWorkspace = ({
     };
   }, [contestMode, contestCompleted, contestStartsIn]);
 
-  const handleEditorDidMount = (editor, monaco) => {
-    editorRef.current = editor;
-
-    if (!contestMode) return;
-
-    const copyInternal = () => {
-      const selection = editor.getSelection();
-      if (selection && !selection.isEmpty()) {
-        const selectedText = editor.getModel()?.getValueInRange(selection);
-        if (selectedText) {
-          contestClipboardRef.current = selectedText;
-          try {
-            navigator.clipboard.writeText(selectedText).catch(() => {});
-          } catch (e) {}
-        }
-      } else {
-        const pos = editor.getPosition();
-        if (pos) {
-          const lineText = editor.getModel()?.getLineContent(pos.lineNumber);
-          if (lineText !== undefined) {
-            contestClipboardRef.current = lineText + '\n';
-            try {
-              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
-            } catch (e) {}
-          }
-        }
-      }
-    };
-
-    const cutInternal = () => {
-      const selection = editor.getSelection();
-      if (selection && !selection.isEmpty()) {
-        const selectedText = editor.getModel()?.getValueInRange(selection);
-        if (selectedText) {
-          contestClipboardRef.current = selectedText;
-          try {
-            navigator.clipboard.writeText(selectedText).catch(() => {});
-          } catch (e) {}
-          editor.executeEdits('contest-cut', [{
-            range: selection,
-            text: '',
-            forceMoveMarkers: true
-          }]);
-          editor.pushUndoStop();
-        }
-      } else {
-        const pos = editor.getPosition();
-        if (pos) {
-          const model = editor.getModel();
-          const lineText = model?.getLineContent(pos.lineNumber);
-          if (lineText !== undefined && model) {
-            contestClipboardRef.current = lineText + '\n';
-            try {
-              navigator.clipboard.writeText(lineText + '\n').catch(() => {});
-            } catch (e) {}
-            const range = pos.lineNumber < model.getLineCount()
-              ? new monaco.Range(pos.lineNumber, 1, pos.lineNumber + 1, 1)
-              : new monaco.Range(pos.lineNumber, 1, pos.lineNumber, model.getLineMaxColumn(pos.lineNumber));
-            editor.executeEdits('contest-cut-line', [{
-              range,
-              text: '',
-              forceMoveMarkers: true
-            }]);
-            editor.pushUndoStop();
-          }
-        }
-      }
-    };
-
-    const pasteInternal = () => {
-      if (!contestClipboardRef.current) {
-        setSecurityAlert('⚠️ External paste blocked: Only code copied inside this contest editor can be pasted.');
-        setTimeout(() => setSecurityAlert(null), 3500);
-        return;
-      }
-      const selection = editor.getSelection();
-      if (selection) {
-        editor.executeEdits('contest-paste', [{
-          range: selection,
-          text: contestClipboardRef.current,
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-      }
-    };
-
-    // Override Monaco commands to enforce isolated contest clipboard
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, copyInternal);
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, cutInternal);
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteInternal);
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, pasteInternal);
-
-    editor.onKeyDown((e) => {
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-      if (e.keyCode === monaco.KeyCode.F5 || (isCtrlOrCmd && e.keyCode === monaco.KeyCode.KeyR)) {
-        e.preventDefault();
-        e.stopPropagation();
-        setSecurityAlert('⚠️ Page refresh is restricted during the contest!');
-        setTimeout(() => setSecurityAlert(null), 3000);
-      }
-    });
-
-    const domNode = editor.getDomNode();
-    if (domNode) {
-      domNode.addEventListener('copy', (e) => {
-        copyInternal();
-        if (e.clipboardData && contestClipboardRef.current) {
-          e.clipboardData.setData('text/plain', contestClipboardRef.current);
-        }
-        e.preventDefault();
-        e.stopPropagation();
-      }, true);
-
-      domNode.addEventListener('cut', (e) => {
-        if (e.clipboardData && contestClipboardRef.current) {
-          e.clipboardData.setData('text/plain', contestClipboardRef.current);
-        }
-        e.preventDefault();
-        e.stopPropagation();
-      }, true);
-
-      domNode.addEventListener('paste', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        pasteInternal();
-      }, true);
-
-      domNode.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setSecurityAlert('⚠️ Right-click context menu is disabled during the contest.');
-        setTimeout(() => setSecurityAlert(null), 3000);
-      }, true);
-    }
-  };
-
-  const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
-    if (contestCompletedRef.current && !isDisqualified) return;
-    contestCompletedRef.current = true;
-    setContestCompleted(true);
-    isProctoringArmedRef.current = false;
-
-    if (isDisqualified) {
-      setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
-    }
-
-    const currentQuestion = questionRef.current;
-    const currentLang = languageRef.current || 'python';
-    const currentCodeMap = codeMapRef.current || {};
-    const currentContest = contestRef.current;
-    const userCode = currentCodeMap[currentLang];
-    const currentBlurs = blurCountRef.current || 0;
-    const currentLogs = antiCheatLogsRef.current || [];
-
-    try {
-      if (userCode && userCode.trim().length > 0 && currentQuestion) {
-        await api.post('/submissions/submit', {
-          questionId: currentQuestion._id || currentQuestion.id || currentQuestion.slug,
-          language: currentLang,
-          code: userCode,
-          contestId: currentContest?._id || currentContest?.slug,
-          blurCount: currentBlurs,
-          antiCheatLogs: [
-            ...currentLogs,
-            { event: isDisqualified ? `Auto-Submitted on Disqualification with ${currentBlurs} violations` : `Auto-Submitted on Contest Completion with ${currentBlurs} tab blurs`, timestamp: new Date() }
-          ]
-        });
-      }
-      if (currentContest) {
-        await api.post(`/contests/${currentContest._id || currentContest.slug}/session/finish`).catch(() => {});
-      }
-    } catch (e) {
-      console.error('Auto submit error:', e);
-    }
-  };
-
-  const handleManualFinish = async () => {
-    setIsFinishingContest(true);
-    setIsManuallyFinished(true);
-    try {
-      await handleAutoSubmitContest(false, 'Contest manually finished and submitted by candidate.');
-    } finally {
-      setIsFinishingContest(false);
-      setFinishModalState(null);
-    }
-  };
-
+  // Load problem details on problemSlug change
   useEffect(() => {
     fetchProblemDetails();
   }, [problemSlug]);
 
-  const handleContestStarted = async () => {
-    setContestStartsIn(0);
-    contestStartsInRef.current = 0;
-    const toastId = Date.now();
-    setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
-    setTimeout(() => {
-      setTimerToast(p => (p?.id === toastId ? null : p));
-    }, 7000);
-
-    const cId = contestRef.current?._id || contestRef.current?.id || contestRef.current?.slug || contest?._id || contest?.id || contest?.slug;
-    if (cId) {
-      try {
-        const res = await api.get(`/contests/${cId}`);
-        if (res.data?.contest) {
-          const freshContest = res.data.contest;
-          contestRef.current = freshContest;
-          setCurrentContestData(freshContest);
-          if (freshContest.endTime) {
-            contestEndTimeRef.current = new Date(freshContest.endTime);
-            const left = Math.max(0, Math.floor((new Date(freshContest.endTime).getTime() - Date.now()) / 1000));
-            setContestTimeLeft(left);
-          }
-          const freshProblems = freshContest.problems || [];
-          if (freshProblems.length > 0) {
-            const first = freshProblems[0];
-            const firstSlug = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
-            await fetchProblemDetails(firstSlug);
-          } else {
-            await fetchProblemDetails();
-          }
-        }
-      } catch (err) {
-        console.error('Error unlocking contest questions:', err);
-        await fetchProblemDetails();
-      }
-    } else {
-      await fetchProblemDetails();
-    }
-    armProctoring();
-  };
-
+  // Contest timer tick effect
   useEffect(() => {
     if (contestMode && contest) {
-      // Set or preserve monotonic end timestamp without resetting on prop re-renders
       if (contest.endTime) {
         const parsedEnd = new Date(contest.endTime);
         if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - parsedEnd.getTime()) > 5000) {
@@ -1055,19 +1395,18 @@ export const StudentProblemWorkspace = ({
               const currentC = res.data.contest;
               const nowMs = Date.now();
               const startMs = currentC.startTime ? new Date(currentC.startTime).getTime() : 0;
-              const endMs = currentC.endTime ? new Date(currentC.endTime).getTime() : Infinity;
-              const isUpcoming = currentC.status === 'Upcoming' || startMs > nowMs;
-              const isTrulyEnded = !isUpcoming && (currentC.status === 'Ended' || endMs <= nowMs);
+              const isUpc = currentC.status === 'Upcoming' || startMs > nowMs;
+              const isTrulyEnded = !isUpc && currentC.status === 'Ended' && (currentC.remainingSecs === undefined || currentC.remainingSecs <= 0);
 
-              if (isTrulyEnded) {
+              if (isTrulyEnded && !isUpc) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
-              } else if (!isUpcoming) {
+              } else if (!isUpc) {
                 if (contestStartsInRef.current > 0) {
                   handleContestStarted();
                 } else if (currentC.endTime) {
                   const newEnd = new Date(currentC.endTime);
-                  if (Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
+                  if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
                     contestEndTimeRef.current = newEnd;
                   }
                 }
@@ -1088,216 +1427,27 @@ export const StudentProblemWorkspace = ({
     }
   }, [contestMode, contest?._id || contest?.id]);
 
-  const fetchProblemDetails = async (targetSlug = problemSlug) => {
-    let slugStr = targetSlug;
-    if (typeof slugStr === 'object' && slugStr !== null) {
-      slugStr = slugStr.slug || slugStr._id || slugStr.id || '';
-    }
-
-    if (slugStr === 'contest-lobby' || !slugStr) {
-      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
-        ? currentContestData.problems
-        : (contest?.problems && contest.problems.length > 0 ? contest.problems : allProblems);
-      if (contestProblems && contestProblems.length > 0) {
-        const first = contestProblems[0];
-        slugStr = typeof first === 'object' ? (first.slug || first._id || first.id) : first;
-      }
-    }
-
-    if (!slugStr) return;
-
-    try {
-      setLoading(true);
-      setExecResult(null);
-
-      let data = null;
-
-      const contestProblems = (currentContestData?.problems && currentContestData.problems.length > 0)
-        ? currentContestData.problems
-        : (contest?.problems || []);
-
-      if (contestProblems.length > 0) {
-        const matchingContestProb = contestProblems.find(p => {
-          if (!p) return false;
-          if (typeof p === 'string') return p === slugStr;
-          return p.slug === slugStr || String(p._id) === String(slugStr) || String(p.id) === String(slugStr) || p.title === slugStr;
-        });
-        if (matchingContestProb && typeof matchingContestProb === 'object' && matchingContestProb.description) {
-          data = matchingContestProb;
-        }
-      }
-
-      if (!data && slugStr && slugStr !== 'contest-lobby') {
-        try {
-          const res = await api.get(`/questions/${slugStr}`);
-          if (res.data?.question || res.data) {
-            data = res.data.question || res.data;
-          }
-        } catch (e) {
-          console.warn('Direct problem fetch fallback:', e);
-        }
-      }
-
-      if (!data) {
-        const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
-        if (pool.length > 0) {
-          data = pool.find(q => q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr)) || pool[0];
-        }
-      }
-
-      if (data) {
-        setQuestion(data);
-        const pKey = data._id || data.slug || slugStr;
-
-        const loadCodeForLang = (lang) => {
-          try {
-            const saved = localStorage.getItem(`codearena_user_code_${pKey}_${lang}`);
-            if (saved !== null && saved.trim() !== '') return saved;
-          } catch (e) {}
-          return data.starterCode?.[lang] || (lang === 'python' ? data.templateCode : null) || defaultBoilerplates[lang] || '';
-        };
-
-        const freshCodeMap = {
-          python: loadCodeForLang('python'),
-          cpp: loadCodeForLang('cpp'),
-          c: loadCodeForLang('c'),
-          java: loadCodeForLang('java'),
-          javascript: loadCodeForLang('javascript')
-        };
-
-        setCodeMap(freshCodeMap);
-      }
-    } catch (err) {
-      console.error('Error fetching problem details:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLanguageChange = (newLang) => {
-    setLanguage(newLang);
-    const pKey = question?._id || question?.slug || problemSlug;
-    let savedCode = codeMap[newLang];
-
-    if (!savedCode && pKey) {
-      try {
-        const stored = localStorage.getItem(`codearena_user_code_${pKey}_${newLang}`);
-        if (stored !== null && stored.trim() !== '') savedCode = stored;
-      } catch (e) {}
-    }
-
-    if (!savedCode) {
-      savedCode = question?.starterCode?.[newLang] || (newLang === 'python' ? question?.templateCode : null) || defaultBoilerplates[newLang] || '';
-    }
-
-    setCodeMap(prev => ({ ...prev, [newLang]: savedCode }));
-  };
-
-  const handleCodeChange = (val) => {
-    const codeVal = val || '';
-    setCodeMap(prev => ({ ...prev, [language]: codeVal }));
-    const pKey = question?._id || question?.slug || problemSlug;
-    if (pKey) {
-      try {
-        localStorage.setItem(`codearena_user_code_${pKey}_${language}`, codeVal);
-      } catch (e) {}
-    }
-  };
-
-  const handleResetCode = () => {
-    const defaultCode = question?.starterCode?.[language] || (language === 'python' ? question?.templateCode : null) || defaultBoilerplates[language] || '';
-    setCodeMap(prev => ({ ...prev, [language]: defaultCode }));
-    const pKey = question?._id || question?.slug || problemSlug;
-    if (pKey) {
-      try {
-        localStorage.removeItem(`codearena_user_code_${pKey}_${language}`);
-      } catch (e) {}
-    }
-  };
-
-  const handleRunCode = async () => {
-    try {
-      setExecuting(true);
-      setConsoleOpen(true);
-      setExecResult({ status: 'Running', message: 'Executing code against sample test cases...' });
-
-      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
-
-      const res = await api.post('/submissions/run', {
-        questionId: qId,
-        language,
-        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || '')
-      });
-
-      const anyStderr = (res.data.testResults && res.data.testResults.find(d => d.stderr)?.stderr) || res.data.stderr;
-
-      setExecResult({
-        type: 'run',
-        success: true,
-        testResults: res.data.testResults || [],
-        stdout: res.data.stdout,
-        stderr: anyStderr,
-        executionTime: res.data.executionTime
-      });
-    } catch (err) {
-      setExecResult({
-        type: 'run',
-        success: false,
-        message: err.response?.data?.message || 'Execution error'
-      });
-    } finally {
-      setExecuting(false);
-    }
-  };
-
-  const handleSubmitCode = async () => {
-    try {
-      setExecuting(true);
-      setConsoleOpen(true);
-      setExecResult({ status: 'Evaluating', message: 'Evaluating solution against hidden official test cases...' });
-
-      const qId = question?._id || question?.id || question?.slug || (typeof problemSlug === 'object' ? (problemSlug?.slug || problemSlug?._id) : problemSlug);
-
-      const res = await api.post('/submissions/submit', {
-        questionId: qId,
-        language,
-        code: codeMap[language] !== undefined ? codeMap[language] : (defaultBoilerplates[language] || ''),
-        contestId: contestMode && contest ? (contest._id || contest.id || contest.slug) : null,
-        blurCount: blurCountRef.current || 0,
-        antiCheatLogs: antiCheatLogsRef.current || []
-      });
-
-      const sub = res.data.submission || res.data;
-      const subScore = sub.score !== undefined ? sub.score : 0;
-      const subStderr = res.data.stderr || sub.stderr || (sub.details && sub.details.find(d => d.stderr)?.stderr);
-      setExecResult({
-        type: 'submit',
-        success: true,
-        verdict: sub.verdict || sub.status || 'Accepted',
-        score: subScore,
-        stderr: subStderr,
-        passedTests: sub.passedTests || sub.testCasesPassed,
-        totalTests: sub.totalTests || sub.totalTestCases,
-        executionTime: sub.executionTime,
-        memory: sub.memory
-      });
-    } catch (err) {
-      setExecResult({
-        type: 'submit',
-        success: false,
-        message: err.response?.data?.message || 'Submission evaluation error'
-      });
-    } finally {
-      setExecuting(false);
-    }
-  };
-
   // Waiting Room View before Contest Starts
-  if (contestMode && contestStartsIn > 0 && !contestCompleted) {
-    const days = Math.floor(contestStartsIn / 86400);
-    const hrs = Math.floor((contestStartsIn % 86400) / 3600);
-    const mins = Math.floor((contestStartsIn % 3600) / 60);
-    const secs = contestStartsIn % 60;
+  const currentStartMs = (currentContestData?.startTime || contest?.startTime) ? new Date(currentContestData?.startTime || contest?.startTime).getTime() : 0;
+  const isTimeInFuture = currentStartMs > Date.now();
+  const isUpcomingContest = Boolean(
+    contestMode &&
+    !contestCompleted &&
+    !disqualifiedReason &&
+    (
+      (isTimeInFuture && contestStartsIn > 0) ||
+      (contestStartsIn > 0 && currentStartMs > 0 && isTimeInFuture) ||
+      (isTimeInFuture && (currentContestData?.status === 'Upcoming' || contest?.status === 'Upcoming')) ||
+      (problemSlug === 'contest-lobby' && !question && isTimeInFuture)
+    )
+  );
+
+  if (isUpcomingContest) {
+    const displayStartsIn = Math.max(0, contestStartsIn);
+    const days = Math.floor(displayStartsIn / 86400);
+    const hrs = Math.floor((displayStartsIn % 86400) / 3600);
+    const mins = Math.floor((displayStartsIn % 3600) / 60);
+    const secs = displayStartsIn % 60;
 
     return (
       <div style={{
@@ -1485,56 +1635,82 @@ export const StudentProblemWorkspace = ({
   if (contestCompleted || disqualifiedReason) {
     if (disqualifiedReason) {
       return (
-        <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '720px', textAlign: 'center' }}>
-          <div className="glass-card" style={{ padding: '2.5rem', borderTop: '4px solid #DC2626', background: '#FFFFFF', borderRadius: '16px', boxShadow: '0 20px 40px -15px rgba(220, 38, 38, 0.2)' }}>
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          color: '#FFFFFF',
+          fontFamily: 'IBM Plex Sans, sans-serif',
+          overflowY: 'auto'
+        }}>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+          <div style={{
+            maxWidth: '680px',
+            width: '100%',
+            background: 'rgba(30, 41, 59, 0.85)',
+            border: '2px solid #EF4444',
+            borderRadius: '20px',
+            padding: '2.5rem 2.25rem',
+            textAlign: 'center',
+            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.4)',
+            backdropFilter: 'blur(16px)'
+          }}>
             <div style={{
-              width: '72px',
-              height: '72px',
+              width: '76px',
+              height: '76px',
               borderRadius: '50%',
-              background: '#FEE2E2',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '2px solid rgba(239, 68, 68, 0.3)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '1.25rem'
             }}>
-              <XCircle size={44} color="#DC2626" />
+              <XCircle size={44} color="#EF4444" />
             </div>
 
             <div style={{
               display: 'inline-block',
-              padding: '0.3rem 0.85rem',
+              padding: '0.35rem 1rem',
               borderRadius: '20px',
-              background: '#FEE2E2',
-              color: '#DC2626',
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#F87171',
               fontWeight: 800,
               fontSize: '0.82rem',
-              letterSpacing: '0.5px',
-              marginBottom: '0.75rem'
+              letterSpacing: '0.08em',
+              marginBottom: '0.85rem',
+              textTransform: 'uppercase'
             }}>
               PROCTORING INTEGRITY LOCKOUT
             </div>
 
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.5rem', color: '#DC2626' }}>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#EF4444' }}>
               Participant Disqualified
             </h2>
 
-            <p style={{ color: 'var(--text-ink)', margin: '0.5rem 0 1.25rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
+            <p style={{ color: '#E2E8F0', margin: '0.5rem 0 1.5rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
               {disqualifiedReason}
             </p>
 
             <div style={{
-              background: '#F8FAFC',
-              border: '1px solid var(--border-color)',
-              borderRadius: '10px',
+              background: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '12px',
               padding: '1.25rem',
               textAlign: 'left',
               marginBottom: '1.75rem',
               fontSize: '0.88rem',
-              color: 'var(--text-slate)',
+              color: '#CBD5E1',
               lineHeight: 1.6
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-ink)', fontWeight: 700, marginBottom: '0.5rem' }}>
-                <ShieldAlert size={16} color="#DC2626" /> Qualification Policy:
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#F87171', fontWeight: 700, marginBottom: '0.5rem' }}>
+                <ShieldAlert size={16} color="#EF4444" /> Qualification Policy:
               </div>
               <p style={{ margin: '0 0 0.5rem' }}>
                 • You have exceeded the permitted threshold of <strong>{contest?.maxAllowedBlurs !== undefined ? contest.maxAllowedBlurs : 2} tab switches / fullscreen exits</strong>.
@@ -1542,12 +1718,28 @@ export const StudentProblemWorkspace = ({
               <p style={{ margin: '0 0 0.5rem' }}>
                 • <strong>Only a Contest Administrator</strong> has the authority to reinstate your qualification.
               </p>
-              <p style={{ margin: 0, color: 'var(--accent-blue)', fontWeight: 600 }}>
+              <p style={{ margin: 0, color: '#60A5FA', fontWeight: 600 }}>
                 🟢 <em>Live Proctoring Sync: If the administrator reinstates you from their dashboard, this workspace will unlock automatically in real-time.</em>
               </p>
             </div>
 
-            <button className="btn btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.25rem' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={onBack}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                padding: '0.75rem 1.75rem',
+                borderRadius: '8px',
+                fontSize: '0.95rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
               <ArrowLeft size={16} /> Exit to Student Portal
             </button>
           </div>
@@ -1556,13 +1748,50 @@ export const StudentProblemWorkspace = ({
     }
 
     return (
-      <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '700px', textAlign: 'center' }}>
-        <div className="glass-card" style={{ padding: '2.5rem' }}>
-          <Trophy size={48} color="var(--accent-blue)" style={{ marginBottom: '1rem' }} />
-          <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: 0, color: 'var(--text-ink)' }}>
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        overflowY: 'auto'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <div style={{
+          maxWidth: '660px',
+          width: '100%',
+          background: 'rgba(30, 41, 59, 0.85)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '20px',
+          padding: '2.5rem 2.25rem',
+          textAlign: 'center',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(16px)'
+        }}>
+          <div style={{
+            width: '76px',
+            height: '76px',
+            borderRadius: '50%',
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '2px solid rgba(59, 130, 246, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '1.25rem'
+          }}>
+            <Trophy size={42} color="#60A5FA" />
+          </div>
+
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
             {isManuallyFinished ? 'Contest Finished & Submitted' : 'Contest Timings Completed'}
           </h2>
-          <p style={{ color: 'var(--text-slate)', margin: '0.5rem 0 1.5rem', lineHeight: 1.5 }}>
+
+          <p style={{ color: '#94A3B8', margin: '0.5rem 0 1.75rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
             {isManuallyFinished
               ? 'You have successfully concluded your contest participation. All written solutions have been submitted and evaluated.'
               : 'The contest timings are completed. All of your written solutions have been automatically submitted and evaluated.'}
@@ -1577,7 +1806,20 @@ export const StudentProblemWorkspace = ({
                 onBack();
               }
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', fontSize: '1rem' }}
+            style={{
+              background: '#3B82F6',
+              border: '1px solid #3B82F6',
+              color: '#FFFFFF',
+              padding: '0.8rem 1.75rem',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
+              cursor: 'pointer'
+            }}
           >
             <Trophy size={18} /> View Contest Results & Leaderboard
           </button>
@@ -1588,116 +1830,107 @@ export const StudentProblemWorkspace = ({
 
   if (loading) {
     return (
-      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
-        Loading Problem Workspace...
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <RefreshCw size={36} className="spin" color="#38BDF8" style={{ marginBottom: '1.25rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F1F5F9' }}>
+          Loading Problem Arena...
+        </h3>
+        <p style={{ color: '#94A3B8', fontSize: '0.9rem', margin: 0 }}>
+          Synchronizing contest questions and setting up the code editor.
+        </p>
       </div>
     );
   }
 
   if (!question) {
     return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
-        <h3>Problem Not Found</h3>
-        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
-          <ArrowLeft size={16} /> Back to Practice
-        </button>
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        padding: '2rem'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <div style={{
+          maxWidth: '520px',
+          width: '100%',
+          background: 'rgba(30, 41, 59, 0.7)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '16px',
+          padding: '2.5rem 2rem',
+          textAlign: 'center',
+          backdropFilter: 'blur(12px)'
+        }}>
+          <AlertTriangle size={42} color="#F59E0B" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
+            Problem Workspace Synchronizing
+          </h3>
+          <p style={{ color: '#94A3B8', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            Synchronizing problem set with the contest server. If questions do not appear, try refreshing the arena or returning to the dashboard.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => fetchProblemDetails()}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={15} /> Retry Sync
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={onBack}
+              style={{
+                background: '#3B82F6',
+                border: '1px solid #3B82F6',
+                color: '#FFFFFF',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer'
+              }}
+            >
+              <ArrowLeft size={15} /> Return to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
-
-  const activeProblemsList = React.useMemo(() => {
-    let list = [];
-    if (contestMode) {
-      const cProbs = currentContestData?.problems || contest?.problems;
-      if (Array.isArray(cProbs) && cProbs.length > 0) {
-        list = cProbs.map((p, idx) => {
-          if (typeof p === 'string') {
-            const found = (allProblems || []).concat(practiceProblemsList || []).find(
-              q => String(q._id) === p || String(q.id) === p || q.slug === p
-            );
-            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
-          } else if (p && typeof p === 'object') {
-            if (!p.title || p.title === p._id || p.title === p.slug) {
-              const pId = p._id || p.id || p.slug;
-              const found = (allProblems || []).concat(practiceProblemsList || []).find(
-                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
-              );
-              if (found) return { ...found, ...p };
-            }
-            return p;
-          }
-          return p;
-        });
-      }
-    }
-
-    if (list.length === 0) {
-      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
-    }
-    return list;
-  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems]);
-  
-  const getProblemIdentifier = (p) => {
-    if (!p) return '';
-    if (typeof p === 'string') return p;
-    return p.slug || p._id || p.id || '';
-  };
-
-  const currentProblemIndex = activeProblemsList.findIndex(p => {
-    if (!p || !question) return false;
-    const pId = typeof p === 'string' ? p : (p._id || p.id);
-    const pSlug = typeof p === 'object' ? p.slug : null;
-    const pTitle = typeof p === 'object' ? p.title : null;
-
-    const qId = question._id || question.id;
-    const qSlug = question.slug;
-    const qTitle = question.title;
-
-    const idMatch = pId && qId && String(pId) === String(qId);
-    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
-                      (pId && qSlug && String(pId) === String(qSlug)) ||
-                      (pSlug && qId && String(pSlug) === String(qId));
-    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
-
-    return idMatch || slugMatch || titleMatch;
-  });
-
-  const selectedOptionValue = (() => {
-    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
-      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
-    }
-    if (question) {
-      const matched = activeProblemsList.find(p => {
-        const pId = typeof p === 'string' ? p : (p._id || p.id);
-        const pSlug = typeof p === 'object' ? p.slug : null;
-        const pTitle = typeof p === 'object' ? p.title : null;
-        return (
-          (pSlug && question.slug && pSlug === question.slug) ||
-          (pId && question._id && String(pId) === String(question._id)) ||
-          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
-        );
-      });
-      if (matched) return getProblemIdentifier(matched);
-    }
-    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
-  })();
-
-  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
-  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
-
-  const handleGoToPrevQuestion = () => {
-    if (hasPrevQuestion) {
-      const prevP = activeProblemsList[currentProblemIndex - 1];
-      fetchProblemDetails(getProblemIdentifier(prevP));
-    }
-  };
-
-  const handleGoToNextQuestion = () => {
-    if (hasNextQuestion) {
-      const nextP = activeProblemsList[currentProblemIndex + 1];
-      fetchProblemDetails(getProblemIdentifier(nextP));
-    }
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
@@ -2100,20 +2333,26 @@ export const StudentProblemWorkspace = ({
           </div>
 
           <div style={{ marginBottom: '1.5rem', lineHeight: 1.6, fontSize: '0.92rem', color: 'var(--text-ink)' }}>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{question?.description || 'Problem statement loading...'}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>
+              {typeof question?.description === 'object' ? JSON.stringify(question.description, null, 2) : String(question?.description || 'Problem statement loading...')}
+            </p>
           </div>
 
           {question?.inputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Input Format (STDIN)</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.inputFormat}</p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>
+                {typeof question.inputFormat === 'object' ? JSON.stringify(question.inputFormat, null, 2) : String(question.inputFormat)}
+              </p>
             </div>
           )}
 
           {question?.outputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Output Format (STDOUT)</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.outputFormat}</p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>
+                {typeof question.outputFormat === 'object' ? JSON.stringify(question.outputFormat, null, 2) : String(question.outputFormat)}
+              </p>
             </div>
           )}
 
@@ -2131,7 +2370,7 @@ export const StudentProblemWorkspace = ({
                 margin: 0,
                 whiteSpace: 'pre-wrap'
               }}>
-                {Array.isArray(question.constraints) ? question.constraints.join('\n') : question.constraints}
+                {Array.isArray(question.constraints) ? question.constraints.join('\n') : (typeof question.constraints === 'object' ? JSON.stringify(question.constraints, null, 2) : String(question.constraints))}
               </pre>
             </div>
           )}
@@ -2162,11 +2401,11 @@ export const StudentProblemWorkspace = ({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontFamily: 'IBM Plex Mono, monospace', fontSize: '0.82rem' }}>
                         <div style={{ background: '#FFFFFF', padding: '0.6rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                           <span style={{ color: 'var(--text-slate)', fontSize: '0.7rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>INPUT (STDIN):</span>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{tc.input || '(empty)'}</pre>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{typeof tc?.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc?.input ?? '(empty)')}</pre>
                         </div>
                         <div style={{ background: '#FFFFFF', padding: '0.6rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                           <span style={{ color: 'var(--text-slate)', fontSize: '0.7rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>EXPECTED OUTPUT (STDOUT):</span>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{tc.expectedOutput || '(empty)'}</pre>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{typeof tc?.expectedOutput === 'object' ? JSON.stringify(tc.expectedOutput, null, 2) : String(tc?.expectedOutput ?? '(empty)')}</pre>
                         </div>
                       </div>
                       {tc.explanation && (
@@ -2813,3 +3052,14 @@ export const StudentProblemWorkspace = ({
     </div>
   );
 };
+
+export const StudentProblemWorkspace = (props) => {
+  return (
+    <ErrorBoundary onBack={props.onBack}>
+      <StudentProblemWorkspaceInner {...props} />
+    </ErrorBoundary>
+  );
+};
+
+export default StudentProblemWorkspace;
+

@@ -295,9 +295,9 @@ export const StudentPortal = ({
     const startMs = contestObj.startTime ? new Date(contestObj.startTime).getTime() : 0;
     const endMs = contestObj.endTime ? new Date(contestObj.endTime).getTime() : Infinity;
     const isUpcoming = contestObj.status === 'Upcoming' || startMs > nowMs;
-    const isTrulyEnded = !isUpcoming && (contestObj.status === 'Ended' || endMs <= nowMs);
+    const isTrulyEnded = !isUpcoming && contestObj.status === 'Ended' && (contestObj.remainingSecs === undefined || contestObj.remainingSecs <= 0);
 
-    if (isTrulyEnded || contestObj.userSession?.isFinished) {
+    if (contestObj.userSession?.isFinished || isTrulyEnded) {
       const cId = contestObj._id || contestObj.id || contestObj.slug;
       if (cId) setLeaderboardContestId(String(cId));
       setActiveProblemSlug(null);
@@ -345,9 +345,9 @@ export const StudentPortal = ({
       const tStartMs = targetContest.startTime ? new Date(targetContest.startTime).getTime() : 0;
       const tEndMs = targetContest.endTime ? new Date(targetContest.endTime).getTime() : Infinity;
       const tIsUpcoming = targetContest.status === 'Upcoming' || tStartMs > nowMs;
-      const tIsTrulyEnded = !tIsUpcoming && (targetContest.status === 'Ended' || tEndMs <= nowMs);
+      const tIsTrulyEnded = !tIsUpcoming && targetContest.status === 'Ended' && (targetContest.remainingSecs === undefined || targetContest.remainingSecs <= 0);
 
-      if (tIsTrulyEnded || targetContest.userSession?.isFinished) {
+      if (targetContest.userSession?.isFinished || tIsTrulyEnded) {
         const endedId = targetContest._id || targetContest.id || targetContest.slug;
         if (endedId) setLeaderboardContestId(String(endedId));
         setActiveProblemSlug(null);
@@ -385,7 +385,10 @@ export const StudentPortal = ({
       setActiveContest(targetContest);
     } catch (err) {
       console.error('Error opening contest arena:', err);
-      alert('Could not initialize contest arena. Please try again.');
+      // Graceful fallback: Still proceed to open contest workspace without hard crash
+      const targetSlug = contestObj.problems?.[0] ? (typeof contestObj.problems[0] === 'object' ? (contestObj.problems[0].slug || contestObj.problems[0]._id) : contestObj.problems[0]) : 'contest-lobby';
+      setActiveProblemSlug(targetSlug || 'contest-lobby');
+      setActiveContest(contestObj);
     }
   };
 
