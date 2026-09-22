@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Search, Filter, Eye, CheckCircle, XCircle, Clock, Trophy } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 import { SubmissionDetailModal } from '../../../components/student/modals/SubmissionDetailModal';
 
 export const StudentSubmissionsSection = ({
   submissions = [],
   contests = [],
-  initialContestFilter = 'all'
+  initialContestFilter = 'all',
+  currentUser = null
 }) => {
+  const auth = useAuth();
+  const activeUser = currentUser || auth?.user || null;
+  const currentUserId = activeUser?.id || activeUser?._id;
+  const currentUserEmail = activeUser?.email;
+
   const [search, setSearch] = useState('');
   const [verdictFilter, setVerdictFilter] = useState('All');
   const [contestFilter, setContestFilter] = useState(initialContestFilter || 'all');
@@ -18,7 +25,23 @@ export const StudentSubmissionsSection = ({
     }
   }, [initialContestFilter]);
 
-  const filteredSubmissions = submissions.filter(sub => {
+  // Enforce privacy: user mode only sees current user's submissions
+  const ownSubmissions = submissions.filter(sub => {
+    if (!activeUser || activeUser.role === 'admin') return true;
+    const subUserId = sub.user?._id ? String(sub.user._id) : (sub.user?.id ? String(sub.user.id) : (typeof sub.user === 'string' ? String(sub.user) : null));
+    if (currentUserId && subUserId) {
+      return subUserId === String(currentUserId);
+    }
+    if (currentUserEmail && sub.user?.email) {
+      return sub.user.email.toLowerCase() === currentUserEmail.toLowerCase();
+    }
+    if (currentUserEmail && sub.email) {
+      return sub.email.toLowerCase() === currentUserEmail.toLowerCase();
+    }
+    return true;
+  });
+
+  const filteredSubmissions = ownSubmissions.filter(sub => {
     const matchesSearch = !search ||
       (sub.questionTitle && sub.questionTitle.toLowerCase().includes(search.toLowerCase())) ||
       (sub.question?.title && sub.question.title.toLowerCase().includes(search.toLowerCase())) ||

@@ -417,11 +417,11 @@ const submitCode = async (req, res) => {
 const getUserSubmissions = async (req, res) => {
   try {
     const { questionId, contestId } = req.query;
-    const userId = req.user.id;
+    const userId = req.user?.id || req.user?._id;
 
     if (getIsConnected()) {
       let filter = {};
-      if (req.user.role !== 'admin') {
+      if (req.user?.role !== 'admin') {
         filter.user = userId;
       }
       if (questionId) {
@@ -448,14 +448,23 @@ const getUserSubmissions = async (req, res) => {
       return res.json({ submissions });
     } else {
       let filterSubmissions = [...(inMemoryStore.submissions || [])];
-      if (req.user.role !== 'admin') {
-        filterSubmissions = filterSubmissions.filter(s => String(s.user?._id || s.user) === String(userId));
+      if (req.user?.role !== 'admin') {
+        filterSubmissions = filterSubmissions.filter(s => {
+          const sUserId = s.user?._id ? String(s.user._id) : (s.user?.id ? String(s.user.id) : String(s.user || ''));
+          return sUserId === String(userId);
+        });
       }
       if (questionId) {
-        filterSubmissions = filterSubmissions.filter(s => String(s.question?._id || s.question) === String(questionId));
+        filterSubmissions = filterSubmissions.filter(s => {
+          const sQId = s.question?._id ? String(s.question._id) : (s.question?.id ? String(s.question.id) : String(s.question || ''));
+          return sQId === String(questionId);
+        });
       }
       if (contestId) {
-        filterSubmissions = filterSubmissions.filter(s => String(s.contest?._id || s.contest) === String(contestId));
+        filterSubmissions = filterSubmissions.filter(s => {
+          const sCId = s.contest?._id ? String(s.contest._id) : (s.contest?.id ? String(s.contest.id) : String(s.contest || ''));
+          return sCId === String(contestId);
+        });
       }
 
       // Populate user, question, and contest if needed
@@ -497,10 +506,30 @@ const getSubmissionById = async (req, res) => {
         .populate('question', 'title difficulty points')
         .lean();
       if (!submission) return res.status(404).json({ message: 'Submission not found' });
+
+      // Non-admin users can ONLY view their own submission and code
+      if (req.user?.role !== 'admin') {
+        const currentUserId = String(req.user?.id || req.user?._id || '');
+        const subUserId = submission.user?._id ? String(submission.user._id) : (submission.user?.id ? String(submission.user.id) : String(submission.user || ''));
+        if (!currentUserId || subUserId !== currentUserId) {
+          return res.status(403).json({ message: 'Access denied. You can only view your own submission.' });
+        }
+      }
+
       return res.json({ submission });
     } else {
-      const submission = inMemoryStore.submissions.find(s => String(s._id) === id);
+      const submission = inMemoryStore.submissions.find(s => String(s._id) === id || String(s.id) === id);
       if (!submission) return res.status(404).json({ message: 'Submission not found' });
+
+      // Non-admin users can ONLY view their own submission and code
+      if (req.user?.role !== 'admin') {
+        const currentUserId = String(req.user?.id || req.user?._id || '');
+        const subUserId = submission.user?._id ? String(submission.user._id) : (submission.user?.id ? String(submission.user.id) : String(submission.user || ''));
+        if (!currentUserId || subUserId !== currentUserId) {
+          return res.status(403).json({ message: 'Access denied. You can only view your own submission.' });
+        }
+      }
+
       return res.json({ submission });
     }
   } catch (err) {

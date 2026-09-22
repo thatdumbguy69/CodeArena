@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, ChevronDown, CheckCircle, XCircle, Clock, Trophy } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * ContestLeaderboard Component
@@ -12,6 +13,8 @@ import { Search, ChevronDown, CheckCircle, XCircle, Clock, Trophy } from 'lucide
  * - lastUpdated: String or Date
  * - currentUserId: String / Number (highlights current logged-in user row)
  * - currentUserEmail: String
+ * - currentUserTeam: String
+ * - currentUserRole: String
  * - onSearchChange: Optional external search handler if parent manages search
  * - searchVal: Optional external search string
  * - loading: Boolean
@@ -25,6 +28,8 @@ export const ContestLeaderboard = ({
   lastUpdated,
   currentUserId,
   currentUserEmail,
+  currentUserTeam,
+  currentUserRole,
   onSearchChange,
   searchVal,
   loading = false,
@@ -32,6 +37,13 @@ export const ContestLeaderboard = ({
   contestId = null,
   onViewSubmissions = null
 }) => {
+  const auth = useAuth();
+  const authUser = auth?.user || null;
+  const effectiveUserId = currentUserId || authUser?.id || authUser?._id;
+  const effectiveUserEmail = currentUserEmail || authUser?.email;
+  const effectiveUserTeam = currentUserTeam || authUser?.teamName;
+  const effectiveUserRole = currentUserRole || authUser?.role;
+
   const [internalSearch, setInternalSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
 
@@ -224,7 +236,15 @@ export const ContestLeaderboard = ({
                 const rankNum = row.rank || idx + 1;
                 const rowKey = row.id || row._id || row.email || idx;
                 const isExpanded = !!expandedRows[rowKey];
-                const isCurrentUser = (currentUserId && String(row.id || row._id) === String(currentUserId)) || (currentUserEmail && row.email === currentUserEmail);
+                const isCurrentUser = Boolean(
+                  (effectiveUserId && (String(row.id || row._id || row.userId) === String(effectiveUserId))) ||
+                  (effectiveUserEmail && row.email && String(row.email).toLowerCase().trim() === String(effectiveUserEmail).toLowerCase().trim())
+                );
+                const isOwnTeam = Boolean(
+                  effectiveUserRole === 'admin' ||
+                  isCurrentUser ||
+                  (effectiveUserTeam && row.teamName && String(row.teamName).toLowerCase().trim() === String(effectiveUserTeam).toLowerCase().trim())
+                );
                 const problemTimes = row.problemTimes || [];
 
                 return (
@@ -359,7 +379,7 @@ export const ContestLeaderboard = ({
                                     <th style={{ padding: '0.4rem 0.6rem' }}>Status</th>
                                     <th style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>Score / Points</th>
                                     <th style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>Time Taken</th>
-                                    {onViewSubmissions && (
+                                    {onViewSubmissions && isOwnTeam && (
                                       <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', width: '130px' }}>Action</th>
                                     )}
                                   </tr>
@@ -410,7 +430,7 @@ export const ContestLeaderboard = ({
                                         <td style={{ padding: '0.5rem 0.6rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: '#374151' }}>
                                           {pt.formatted || (pt.seconds !== null && pt.seconds !== undefined ? `${pt.seconds}s` : 'N/A')}
                                         </td>
-                                        {onViewSubmissions && (
+                                        {onViewSubmissions && isOwnTeam && (
                                           <td style={{ padding: '0.5rem 0.6rem', textAlign: 'center' }}>
                                             <button
                                               type="button"
