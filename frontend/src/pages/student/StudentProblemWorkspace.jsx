@@ -1061,17 +1061,18 @@ export const StudentProblemWorkspace = ({
               const currentC = res.data.contest;
               const nowMs = Date.now();
               const startMs = currentC.startTime ? new Date(currentC.startTime).getTime() : 0;
-              const isTrulyEnded = !isUpcoming && currentC.status === 'Ended' && (currentC.remainingSecs === undefined || currentC.remainingSecs <= 0);
+              const isUpc = currentC.status === 'Upcoming' || startMs > nowMs;
+              const isTrulyEnded = !isUpc && currentC.status === 'Ended' && (currentC.remainingSecs === undefined || currentC.remainingSecs <= 0);
 
-              if (isTrulyEnded && !isUpcoming) {
+              if (isTrulyEnded && !isUpc) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
-              } else if (!isUpcoming) {
+              } else if (!isUpc) {
                 if (contestStartsInRef.current > 0) {
                   handleContestStarted();
                 } else if (currentC.endTime) {
                   const newEnd = new Date(currentC.endTime);
-                  if (Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
+                  if (!contestEndTimeRef.current || Math.abs(contestEndTimeRef.current.getTime() - newEnd.getTime()) > 5000) {
                     contestEndTimeRef.current = newEnd;
                   }
                 }
@@ -1335,15 +1336,17 @@ export const StudentProblemWorkspace = ({
   };
 
   // Waiting Room View before Contest Starts
+  const currentStartMs = (currentContestData?.startTime || contest?.startTime) ? new Date(currentContestData?.startTime || contest?.startTime).getTime() : 0;
+  const isTimeInFuture = currentStartMs > Date.now();
   const isUpcomingContest = Boolean(
     contestMode &&
     !contestCompleted &&
     !disqualifiedReason &&
     (
-      contestStartsIn > 0 ||
-      (currentContestData?.status === 'Upcoming') ||
-      (contest?.status === 'Upcoming' && (!currentContestData || currentContestData?.status === 'Upcoming')) ||
-      (problemSlug === 'contest-lobby' && !question)
+      (isTimeInFuture && contestStartsIn > 0) ||
+      (contestStartsIn > 0) ||
+      (isTimeInFuture && (currentContestData?.status === 'Upcoming' || contest?.status === 'Upcoming')) ||
+      (problemSlug === 'contest-lobby' && !question && isTimeInFuture)
     )
   );
 

@@ -11,6 +11,7 @@ import { StudentSubmissionsSection } from './sections/StudentSubmissionsSection'
 import { StudentLeaderboardSection } from './sections/StudentLeaderboardSection';
 import { StudentProfileSection } from './sections/StudentProfileSection';
 import { StudentProblemWorkspace } from './StudentProblemWorkspace';
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 
 export const StudentPortal = ({
   initialTab = 'dashboard',
@@ -385,7 +386,10 @@ export const StudentPortal = ({
       setActiveContest(targetContest);
     } catch (err) {
       console.error('Error opening contest arena:', err);
-      alert('Could not initialize contest arena. Please try again.');
+      // Graceful fallback: Still proceed to open contest workspace without hard crash
+      const targetSlug = contestObj.problems?.[0] ? (typeof contestObj.problems[0] === 'object' ? (contestObj.problems[0].slug || contestObj.problems[0]._id) : contestObj.problems[0]) : 'contest-lobby';
+      setActiveProblemSlug(targetSlug || 'contest-lobby');
+      setActiveContest(contestObj);
     }
   };
 
@@ -410,37 +414,51 @@ export const StudentPortal = ({
   // Active Problem / Contest Workspace View
   if (activeProblemSlug || activeContest) {
     return (
-      <StudentProblemWorkspace
-        problemSlug={activeProblemSlug || 'contest-lobby'}
-        contestMode={!!activeContest}
-        contest={activeContest}
-        allProblems={questions}
+      <ErrorBoundary
+        onReset={() => {
+          setActiveProblemSlug(null);
+          setActiveContest(null);
+          fetchStudentPortalData(false);
+        }}
         onBack={() => {
           exitBrowserFullscreen();
-          const wasContest = !!activeContest;
-          const contestIdToUse = activeContest?._id || activeContest?.id || activeContest?.slug;
-          if (wasContest && contestIdToUse) {
-            setLeaderboardContestId(String(contestIdToUse));
-          }
           setActiveProblemSlug(null);
           setActiveContest(null);
-          if (wasContest) {
+          setActiveTab('contests');
+        }}
+      >
+        <StudentProblemWorkspace
+          problemSlug={activeProblemSlug || 'contest-lobby'}
+          contestMode={!!activeContest}
+          contest={activeContest}
+          allProblems={questions}
+          onBack={() => {
+            exitBrowserFullscreen();
+            const wasContest = !!activeContest;
+            const contestIdToUse = activeContest?._id || activeContest?.id || activeContest?.slug;
+            if (wasContest && contestIdToUse) {
+              setLeaderboardContestId(String(contestIdToUse));
+            }
+            setActiveProblemSlug(null);
+            setActiveContest(null);
+            if (wasContest) {
+              setActiveTab('leaderboard');
+            } else {
+              setActiveTab('practice');
+            }
+          }}
+          onViewLeaderboard={(targetContestId) => {
+            exitBrowserFullscreen();
+            const targetId = targetContestId || activeContest?._id || activeContest?.id || activeContest?.slug;
+            if (targetId) {
+              setLeaderboardContestId(String(targetId));
+            }
+            setActiveProblemSlug(null);
+            setActiveContest(null);
             setActiveTab('leaderboard');
-          } else {
-            setActiveTab('practice');
-          }
-        }}
-        onViewLeaderboard={(targetContestId) => {
-          exitBrowserFullscreen();
-          const targetId = targetContestId || activeContest?._id || activeContest?.id || activeContest?.slug;
-          if (targetId) {
-            setLeaderboardContestId(String(targetId));
-          }
-          setActiveProblemSlug(null);
-          setActiveContest(null);
-          setActiveTab('leaderboard');
-        }}
-      />
+          }}
+        />
+      </ErrorBoundary>
     );
   }
 
