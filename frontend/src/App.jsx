@@ -16,7 +16,6 @@ import { AdminContestManagement } from './pages/AdminContestManagement';
 
 import { CreateProblemPage } from './pages/CreateProblemPage';
 import { HostContestPage } from './pages/HostContestPage';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const isPageReload = (() => {
   try {
@@ -306,22 +305,11 @@ const AppContent = () => {
           )}
 
           {currentTab === 'contest' && (
-            <ErrorBoundary
-              onReset={() => {
-                setSelectedContest(null);
-                setCurrentTab('contests');
-              }}
-              onBack={() => {
-                setSelectedContest(null);
-                setCurrentTab('contests');
-              }}
-            >
-              <ContestMode
-                contest={selectedContest}
-                onFinishContest={() => setCurrentTab('contests')}
-                onBack={() => setCurrentTab('contests')}
-              />
-            </ErrorBoundary>
+            <ContestMode
+              contest={selectedContest}
+              onFinishContest={() => setCurrentTab('contests')}
+              onBack={() => setCurrentTab('contests')}
+            />
           )}
         </main>
 
