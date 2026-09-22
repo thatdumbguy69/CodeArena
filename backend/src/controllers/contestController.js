@@ -362,12 +362,10 @@ const updateContest = async (req, res) => {
       const realtimeContest = computeContestRealtime(populated);
 
       if (realtimeContest.status === 'Ended' || otherFields.status === 'Ended') {
-        emitContestEnded(contest._id);
-        emitContestEnded(contest.slug);
+        emitContestEnded(contest._id, contest.slug);
       } else if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
         const remSecs = Math.max(0, Math.floor((new Date(realtimeContest.endTime).getTime() - Date.now()) / 1000));
-        emitTimerSync(contest._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
-        emitTimerSync(contest.slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(contest._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0, contest.slug);
       }
 
       return res.json({ message: 'Contest updated successfully', contest: realtimeContest });
@@ -411,12 +409,10 @@ const updateContest = async (req, res) => {
       bustContestsCache();
 
       if (list[idx].status === 'Ended' || otherFields.status === 'Ended') {
-        emitContestEnded(list[idx]._id);
-        emitContestEnded(list[idx].slug);
+        emitContestEnded(list[idx]._id, list[idx].slug);
       } else if (duration !== undefined || endTime !== undefined || timeAdjustmentMins !== undefined) {
         const remSecs = Math.max(0, Math.floor((new Date(list[idx].endTime).getTime() - Date.now()) / 1000));
-        emitTimerSync(list[idx]._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
-        emitTimerSync(list[idx].slug, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0);
+        emitTimerSync(list[idx]._id, remSecs, timeAdjustmentMins ? parseInt(timeAdjustmentMins, 10) : 0, list[idx].slug);
       }
 
       return res.json({ message: 'Contest updated successfully', contest: list[idx] });

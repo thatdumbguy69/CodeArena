@@ -88,6 +88,7 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   const languageRef = useRef(language);
   const blurCountRef = useRef(blurCount);
   const lastViolationTimeRef = useRef(0);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => { codesRef.current = codes; }, [codes]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
@@ -113,7 +114,8 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
   };
 
   const autoSubmitAndFinish = async () => {
-    if (contestFinished || isAutoSubmitting) return;
+    if (contestFinished || isAutoSubmitting || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsAutoSubmitting(true);
 
     const qList = questionsRef.current || [];
@@ -255,6 +257,8 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     const cId = contest._id || contest.slug || contest.id;
     if (joinContest && cId) {
       joinContest(cId, {
+        contestId: cId,
+        contestSlug: contest.slug,
         userId: user?._id || user?.id,
         userName: user?.name,
         email: user?.email
@@ -264,16 +268,22 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     if (!socket) return;
 
     const handleForceSubmit = (data) => {
+      if (!contest) return;
+      const incomingId = String(data?.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
+        return;
+      }
       console.log('⚡ Admin force ended the contest! Submitting solutions immediately...', data);
       setSecurityAlert('🛑 Contest has been finalized and ended by Host Administrator.');
       autoSubmitAndFinish();
     };
 
     const handleTimerSync = (data) => {
-      if (!data) return;
-      const myContestId = String(contest?._id || contest?.slug || contest?.id || '');
-      const incomingId = String(data.contestId || '');
-      if (incomingId && myContestId && incomingId !== myContestId && !myContestId.includes(incomingId) && !incomingId.includes(myContestId)) {
+      if (!data || !contest) return;
+      const incomingId = String(data.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
         return;
       }
 

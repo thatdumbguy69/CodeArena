@@ -181,6 +181,8 @@ export const StudentProblemWorkspace = ({
     if (contestMode && contest) {
       const cId = contest._id || contest.id || contest.slug;
       joinContest(cId, {
+        contestId: cId,
+        contestSlug: contest.slug,
         userId: user?._id || user?.id,
         userName: user?.name,
         teamName: user?.teamName,
@@ -257,23 +259,21 @@ export const StudentProblemWorkspace = ({
     };
 
     const handleForceSubmit = (data) => {
-      const myContestId = String(contest?._id || contest?.id || contest?.slug || '');
-      const incomingId = String(data?.contestId || '');
-      if (incomingId && myContestId && incomingId !== myContestId && !myContestId.includes(incomingId) && !incomingId.includes(myContestId)) {
+      if (!contestMode || !contest) return;
+      const incomingId = String(data?.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
         return;
       }
       setContestTimeLeft(0);
-      setContestCompleted(true);
-      contestCompletedRef.current = true;
-      isProctoringArmedRef.current = false;
       handleAutoSubmitContest();
     };
 
     const handleTimerSync = (data) => {
-      if (!data) return;
-      const myContestId = String(contest?._id || contest?.id || contest?.slug || '');
-      const incomingId = String(data.contestId || '');
-      if (incomingId && myContestId && incomingId !== myContestId && !myContestId.includes(incomingId) && !incomingId.includes(myContestId)) {
+      if (!data || !contestMode || !contest) return;
+      const incomingId = String(data.contestId || '').trim();
+      const validIds = [contest._id, contest.id, contest.slug].filter(Boolean).map(v => String(v).trim());
+      if (!incomingId || !validIds.includes(incomingId)) {
         return;
       }
 
@@ -306,9 +306,6 @@ export const StudentProblemWorkspace = ({
         }, 6000);
 
         if (newRemSecs <= 0) {
-          setContestCompleted(true);
-          contestCompletedRef.current = true;
-          isProctoringArmedRef.current = false;
           handleAutoSubmitContest();
         }
       }
@@ -812,8 +809,9 @@ export const StudentProblemWorkspace = ({
 
   const handleAutoSubmitContest = async (isDisqualified = false, customReason = null) => {
     if (contestCompletedRef.current && !isDisqualified) return;
-    setContestCompleted(true);
     contestCompletedRef.current = true;
+    setContestCompleted(true);
+    isProctoringArmedRef.current = false;
 
     if (isDisqualified) {
       setDisqualifiedReason(customReason || 'You have been disqualified for exceeding maximum permitted tab switches (2/2 violations).');
