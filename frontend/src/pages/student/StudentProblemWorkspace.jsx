@@ -25,6 +25,7 @@ import Editor from '@monaco-editor/react';
 import api from '../../services/api';
 import { ResetCodeModal } from '../../components/student/modals/ResetCodeModal';
 import { CompileErrorDisplay } from '../../components/common/CompileErrorDisplay';
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -47,7 +48,7 @@ const defaultBoilerplates = {
   javascript: 'const fs = require("fs");\n\nfunction solve() {\n    const input = fs.readFileSync(0, "utf-8").trim().split(/\\s+/);\n    if (!input || input.length === 0) return;\n    // Write your solution here...\n}\n\nsolve();'
 };
 
-export const StudentProblemWorkspace = ({
+const StudentProblemWorkspaceInner = ({
   problemSlug,
   contestMode = false,
   contest = null,
@@ -485,6 +486,103 @@ export const StudentProblemWorkspace = ({
       await fetchProblemDetails();
     }
     armProctoring();
+  };
+
+  const activeProblemsList = React.useMemo(() => {
+    let list = [];
+    if (contestMode) {
+      const cProbs = currentContestData?.problems || contest?.problems;
+      if (Array.isArray(cProbs) && cProbs.length > 0) {
+        list = cProbs.map((p, idx) => {
+          if (typeof p === 'string') {
+            const found = (allProblems || []).concat(practiceProblemsList || []).find(
+              q => String(q._id) === p || String(q.id) === p || q.slug === p
+            );
+            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
+          } else if (p && typeof p === 'object') {
+            if (!p.title || p.title === p._id || p.title === p.slug) {
+              const pId = p._id || p.id || p.slug;
+              const found = (allProblems || []).concat(practiceProblemsList || []).find(
+                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
+              );
+              if (found) return { ...found, ...p };
+            }
+            return p;
+          }
+          return p;
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
+    }
+    if (list.length === 0 && question) {
+      list = [question];
+    }
+    return list;
+  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems, question]);
+  
+  const getProblemIdentifier = (p) => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    return p.slug || p._id || p.id || '';
+  };
+
+  const currentProblemIndex = activeProblemsList.findIndex(p => {
+    if (!p || !question) return false;
+    const pId = typeof p === 'string' ? p : (p._id || p.id);
+    const pSlug = typeof p === 'object' ? p.slug : null;
+    const pTitle = typeof p === 'object' ? p.title : null;
+
+    const qId = question._id || question.id;
+    const qSlug = question.slug;
+    const qTitle = question.title;
+
+    const idMatch = pId && qId && String(pId) === String(qId);
+    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
+                      (pId && qSlug && String(pId) === String(qSlug)) ||
+                      (pSlug && qId && String(pSlug) === String(qId));
+    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
+
+    return idMatch || slugMatch || titleMatch;
+  });
+
+  const selectedOptionValue = (() => {
+    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
+      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
+    }
+    if (question) {
+      const matched = activeProblemsList.find(p => {
+        const pId = typeof p === 'string' ? p : (p._id || p.id);
+        const pSlug = typeof p === 'object' ? p.slug : null;
+        const pTitle = typeof p === 'object' ? p.title : null;
+        return (
+          (pSlug && question.slug && pSlug === question.slug) ||
+          (pId && question._id && String(pId) === String(question._id)) ||
+          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
+        );
+      });
+      if (matched) return getProblemIdentifier(matched);
+    }
+    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
+  })();
+
+  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
+  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
+
+  const handleGoToPrevQuestion = () => {
+    if (hasPrevQuestion) {
+      const prevP = activeProblemsList[currentProblemIndex - 1];
+      fetchProblemDetails(getProblemIdentifier(prevP));
+    }
+  };
+
+  const handleGoToNextQuestion = () => {
+    if (hasNextQuestion) {
+      const nextP = activeProblemsList[currentProblemIndex + 1];
+      fetchProblemDetails(getProblemIdentifier(nextP));
+    }
   };
 
   const handleManualFinish = async () => {
@@ -1834,103 +1932,6 @@ export const StudentProblemWorkspace = ({
     );
   }
 
-  const activeProblemsList = React.useMemo(() => {
-    let list = [];
-    if (contestMode) {
-      const cProbs = currentContestData?.problems || contest?.problems;
-      if (Array.isArray(cProbs) && cProbs.length > 0) {
-        list = cProbs.map((p, idx) => {
-          if (typeof p === 'string') {
-            const found = (allProblems || []).concat(practiceProblemsList || []).find(
-              q => String(q._id) === p || String(q.id) === p || q.slug === p
-            );
-            return found || { _id: p, slug: p, title: `Problem ${idx + 1}` };
-          } else if (p && typeof p === 'object') {
-            if (!p.title || p.title === p._id || p.title === p.slug) {
-              const pId = p._id || p.id || p.slug;
-              const found = (allProblems || []).concat(practiceProblemsList || []).find(
-                q => String(q._id) === String(pId) || String(q.id) === String(pId) || q.slug === p.slug
-              );
-              if (found) return { ...found, ...p };
-            }
-            return p;
-          }
-          return p;
-        });
-      }
-    }
-
-    if (list.length === 0) {
-      list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
-    }
-    if (list.length === 0 && question) {
-      list = [question];
-    }
-    return list;
-  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems, question]);
-  
-  const getProblemIdentifier = (p) => {
-    if (!p) return '';
-    if (typeof p === 'string') return p;
-    return p.slug || p._id || p.id || '';
-  };
-
-  const currentProblemIndex = activeProblemsList.findIndex(p => {
-    if (!p || !question) return false;
-    const pId = typeof p === 'string' ? p : (p._id || p.id);
-    const pSlug = typeof p === 'object' ? p.slug : null;
-    const pTitle = typeof p === 'object' ? p.title : null;
-
-    const qId = question._id || question.id;
-    const qSlug = question.slug;
-    const qTitle = question.title;
-
-    const idMatch = pId && qId && String(pId) === String(qId);
-    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
-                      (pId && qSlug && String(pId) === String(qSlug)) ||
-                      (pSlug && qId && String(pSlug) === String(qId));
-    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
-
-    return idMatch || slugMatch || titleMatch;
-  });
-
-  const selectedOptionValue = (() => {
-    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
-      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
-    }
-    if (question) {
-      const matched = activeProblemsList.find(p => {
-        const pId = typeof p === 'string' ? p : (p._id || p.id);
-        const pSlug = typeof p === 'object' ? p.slug : null;
-        const pTitle = typeof p === 'object' ? p.title : null;
-        return (
-          (pSlug && question.slug && pSlug === question.slug) ||
-          (pId && question._id && String(pId) === String(question._id)) ||
-          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
-        );
-      });
-      if (matched) return getProblemIdentifier(matched);
-    }
-    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
-  })();
-
-  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
-  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
-
-  const handleGoToPrevQuestion = () => {
-    if (hasPrevQuestion) {
-      const prevP = activeProblemsList[currentProblemIndex - 1];
-      fetchProblemDetails(getProblemIdentifier(prevP));
-    }
-  };
-
-  const handleGoToNextQuestion = () => {
-    if (hasNextQuestion) {
-      const nextP = activeProblemsList[currentProblemIndex + 1];
-      fetchProblemDetails(getProblemIdentifier(nextP));
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
       {/* Chromium Top Fullscreen Barrier to suppress browser exit pill */}
@@ -2332,20 +2333,26 @@ export const StudentProblemWorkspace = ({
           </div>
 
           <div style={{ marginBottom: '1.5rem', lineHeight: 1.6, fontSize: '0.92rem', color: 'var(--text-ink)' }}>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{question?.description || 'Problem statement loading...'}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>
+              {typeof question?.description === 'object' ? JSON.stringify(question.description, null, 2) : String(question?.description || 'Problem statement loading...')}
+            </p>
           </div>
 
           {question?.inputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Input Format (STDIN)</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.inputFormat}</p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>
+                {typeof question.inputFormat === 'object' ? JSON.stringify(question.inputFormat, null, 2) : String(question.inputFormat)}
+              </p>
             </div>
           )}
 
           {question?.outputFormat && (
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.4rem' }}>Output Format (STDOUT)</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>{question.outputFormat}</p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-slate)', whiteSpace: 'pre-wrap' }}>
+                {typeof question.outputFormat === 'object' ? JSON.stringify(question.outputFormat, null, 2) : String(question.outputFormat)}
+              </p>
             </div>
           )}
 
@@ -2363,7 +2370,7 @@ export const StudentProblemWorkspace = ({
                 margin: 0,
                 whiteSpace: 'pre-wrap'
               }}>
-                {Array.isArray(question.constraints) ? question.constraints.join('\n') : question.constraints}
+                {Array.isArray(question.constraints) ? question.constraints.join('\n') : (typeof question.constraints === 'object' ? JSON.stringify(question.constraints, null, 2) : String(question.constraints))}
               </pre>
             </div>
           )}
@@ -2394,11 +2401,11 @@ export const StudentProblemWorkspace = ({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontFamily: 'IBM Plex Mono, monospace', fontSize: '0.82rem' }}>
                         <div style={{ background: '#FFFFFF', padding: '0.6rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                           <span style={{ color: 'var(--text-slate)', fontSize: '0.7rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>INPUT (STDIN):</span>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{tc.input || '(empty)'}</pre>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{typeof tc?.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc?.input ?? '(empty)')}</pre>
                         </div>
                         <div style={{ background: '#FFFFFF', padding: '0.6rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                           <span style={{ color: 'var(--text-slate)', fontSize: '0.7rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>EXPECTED OUTPUT (STDOUT):</span>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{tc.expectedOutput || '(empty)'}</pre>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-ink)' }}>{typeof tc?.expectedOutput === 'object' ? JSON.stringify(tc.expectedOutput, null, 2) : String(tc?.expectedOutput ?? '(empty)')}</pre>
                         </div>
                       </div>
                       {tc.explanation && (
@@ -3045,3 +3052,14 @@ export const StudentProblemWorkspace = ({
     </div>
   );
 };
+
+export const StudentProblemWorkspace = (props) => {
+  return (
+    <ErrorBoundary onBack={props.onBack}>
+      <StudentProblemWorkspaceInner {...props} />
+    </ErrorBoundary>
+  );
+};
+
+export default StudentProblemWorkspace;
+
