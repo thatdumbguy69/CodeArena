@@ -118,8 +118,9 @@ export const StudentProblemWorkspace = ({
     const endMs = contest.endTime ? new Date(contest.endTime).getTime() : Infinity;
     const isUpcoming = contest.status === 'Upcoming' || startMs > nowMs;
     if (isUpcoming) return false;
-    if (contest.status === 'Ended') return true;
-    if (endMs <= nowMs && startMs <= nowMs) return true;
+    if (contest.status === 'Ended' && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
+    if (contest.userSession?.isFinished) return true;
+    if (endMs <= nowMs && startMs <= nowMs && (contest.remainingSecs === undefined || contest.remainingSecs <= 0)) return true;
     return false;
   });
 
@@ -1060,11 +1061,9 @@ export const StudentProblemWorkspace = ({
               const currentC = res.data.contest;
               const nowMs = Date.now();
               const startMs = currentC.startTime ? new Date(currentC.startTime).getTime() : 0;
-              const endMs = currentC.endTime ? new Date(currentC.endTime).getTime() : Infinity;
-              const isUpcoming = currentC.status === 'Upcoming' || startMs > nowMs;
-              const isTrulyEnded = !isUpcoming && (currentC.status === 'Ended' || endMs <= nowMs);
+              const isTrulyEnded = !isUpcoming && currentC.status === 'Ended' && (currentC.remainingSecs === undefined || currentC.remainingSecs <= 0);
 
-              if (isTrulyEnded) {
+              if (isTrulyEnded && !isUpcoming) {
                 clearInterval(statusPollTimer);
                 handleAutoSubmitContest();
               } else if (!isUpcoming) {
@@ -1541,56 +1540,82 @@ export const StudentProblemWorkspace = ({
   if (contestCompleted || disqualifiedReason) {
     if (disqualifiedReason) {
       return (
-        <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '720px', textAlign: 'center' }}>
-          <div className="glass-card" style={{ padding: '2.5rem', borderTop: '4px solid #DC2626', background: '#FFFFFF', borderRadius: '16px', boxShadow: '0 20px 40px -15px rgba(220, 38, 38, 0.2)' }}>
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          color: '#FFFFFF',
+          fontFamily: 'IBM Plex Sans, sans-serif',
+          overflowY: 'auto'
+        }}>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+          <div style={{
+            maxWidth: '680px',
+            width: '100%',
+            background: 'rgba(30, 41, 59, 0.85)',
+            border: '2px solid #EF4444',
+            borderRadius: '20px',
+            padding: '2.5rem 2.25rem',
+            textAlign: 'center',
+            boxShadow: '0 25px 60px -15px rgba(220, 38, 38, 0.4)',
+            backdropFilter: 'blur(16px)'
+          }}>
             <div style={{
-              width: '72px',
-              height: '72px',
+              width: '76px',
+              height: '76px',
               borderRadius: '50%',
-              background: '#FEE2E2',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '2px solid rgba(239, 68, 68, 0.3)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '1.25rem'
             }}>
-              <XCircle size={44} color="#DC2626" />
+              <XCircle size={44} color="#EF4444" />
             </div>
 
             <div style={{
               display: 'inline-block',
-              padding: '0.3rem 0.85rem',
+              padding: '0.35rem 1rem',
               borderRadius: '20px',
-              background: '#FEE2E2',
-              color: '#DC2626',
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#F87171',
               fontWeight: 800,
               fontSize: '0.82rem',
-              letterSpacing: '0.5px',
-              marginBottom: '0.75rem'
+              letterSpacing: '0.08em',
+              marginBottom: '0.85rem',
+              textTransform: 'uppercase'
             }}>
               PROCTORING INTEGRITY LOCKOUT
             </div>
 
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.5rem', color: '#DC2626' }}>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#EF4444' }}>
               Participant Disqualified
             </h2>
 
-            <p style={{ color: 'var(--text-ink)', margin: '0.5rem 0 1.25rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
+            <p style={{ color: '#E2E8F0', margin: '0.5rem 0 1.5rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
               {disqualifiedReason}
             </p>
 
             <div style={{
-              background: '#F8FAFC',
-              border: '1px solid var(--border-color)',
-              borderRadius: '10px',
+              background: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '12px',
               padding: '1.25rem',
               textAlign: 'left',
               marginBottom: '1.75rem',
               fontSize: '0.88rem',
-              color: 'var(--text-slate)',
+              color: '#CBD5E1',
               lineHeight: 1.6
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-ink)', fontWeight: 700, marginBottom: '0.5rem' }}>
-                <ShieldAlert size={16} color="#DC2626" /> Qualification Policy:
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#F87171', fontWeight: 700, marginBottom: '0.5rem' }}>
+                <ShieldAlert size={16} color="#EF4444" /> Qualification Policy:
               </div>
               <p style={{ margin: '0 0 0.5rem' }}>
                 • You have exceeded the permitted threshold of <strong>{contest?.maxAllowedBlurs !== undefined ? contest.maxAllowedBlurs : 2} tab switches / fullscreen exits</strong>.
@@ -1598,12 +1623,28 @@ export const StudentProblemWorkspace = ({
               <p style={{ margin: '0 0 0.5rem' }}>
                 • <strong>Only a Contest Administrator</strong> has the authority to reinstate your qualification.
               </p>
-              <p style={{ margin: 0, color: 'var(--accent-blue)', fontWeight: 600 }}>
+              <p style={{ margin: 0, color: '#60A5FA', fontWeight: 600 }}>
                 🟢 <em>Live Proctoring Sync: If the administrator reinstates you from their dashboard, this workspace will unlock automatically in real-time.</em>
               </p>
             </div>
 
-            <button className="btn btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.25rem' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={onBack}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                padding: '0.75rem 1.75rem',
+                borderRadius: '8px',
+                fontSize: '0.95rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
               <ArrowLeft size={16} /> Exit to Student Portal
             </button>
           </div>
@@ -1612,13 +1653,50 @@ export const StudentProblemWorkspace = ({
     }
 
     return (
-      <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '700px', textAlign: 'center' }}>
-        <div className="glass-card" style={{ padding: '2.5rem' }}>
-          <Trophy size={48} color="var(--accent-blue)" style={{ marginBottom: '1rem' }} />
-          <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: 0, color: 'var(--text-ink)' }}>
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        overflowY: 'auto'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <div style={{
+          maxWidth: '660px',
+          width: '100%',
+          background: 'rgba(30, 41, 59, 0.85)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '20px',
+          padding: '2.5rem 2.25rem',
+          textAlign: 'center',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(16px)'
+        }}>
+          <div style={{
+            width: '76px',
+            height: '76px',
+            borderRadius: '50%',
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '2px solid rgba(59, 130, 246, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '1.25rem'
+          }}>
+            <Trophy size={42} color="#60A5FA" />
+          </div>
+
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
             {isManuallyFinished ? 'Contest Finished & Submitted' : 'Contest Timings Completed'}
           </h2>
-          <p style={{ color: 'var(--text-slate)', margin: '0.5rem 0 1.5rem', lineHeight: 1.5 }}>
+
+          <p style={{ color: '#94A3B8', margin: '0.5rem 0 1.75rem', lineHeight: 1.6, fontSize: '0.96rem' }}>
             {isManuallyFinished
               ? 'You have successfully concluded your contest participation. All written solutions have been submitted and evaluated.'
               : 'The contest timings are completed. All of your written solutions have been automatically submitted and evaluated.'}
@@ -1633,7 +1711,20 @@ export const StudentProblemWorkspace = ({
                 onBack();
               }
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', fontSize: '1rem' }}
+            style={{
+              background: '#3B82F6',
+              border: '1px solid #3B82F6',
+              color: '#FFFFFF',
+              padding: '0.8rem 1.75rem',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
+              cursor: 'pointer'
+            }}
           >
             <Trophy size={18} /> View Contest Results & Leaderboard
           </button>
@@ -1644,22 +1735,104 @@ export const StudentProblemWorkspace = ({
 
   if (loading) {
     return (
-      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
-        Loading Problem Workspace...
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <RefreshCw size={36} className="spin" color="#38BDF8" style={{ marginBottom: '1.25rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F1F5F9' }}>
+          Loading Problem Arena...
+        </h3>
+        <p style={{ color: '#94A3B8', fontSize: '0.9rem', margin: 0 }}>
+          Synchronizing contest questions and setting up the code editor.
+        </p>
       </div>
     );
   }
 
   if (!question) {
     return (
-      <div style={{ padding: '4rem', textAlign: 'center', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <h3 style={{ color: 'var(--text-ink)', fontWeight: 800, marginBottom: '0.5rem' }}>Problem Workspace Synchronizing</h3>
-        <p style={{ color: 'var(--text-slate)', maxWidth: '480px', marginBottom: '1.5rem' }}>
-          Loading the active problem set. If this persists, return to the contest dashboard.
-        </p>
-        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-          <ArrowLeft size={16} /> Return to Dashboard
-        </button>
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'linear-gradient(135deg, #0B1120 0%, #0F172A 50%, #1E293B 100%)',
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#FFFFFF',
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        padding: '2rem'
+      }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '6px', zIndex: 99999999, pointerEvents: 'none' }} />
+        <div style={{
+          maxWidth: '520px',
+          width: '100%',
+          background: 'rgba(30, 41, 59, 0.7)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '16px',
+          padding: '2.5rem 2rem',
+          textAlign: 'center',
+          backdropFilter: 'blur(12px)'
+        }}>
+          <AlertTriangle size={42} color="#F59E0B" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 0.6rem', color: '#FFFFFF' }}>
+            Problem Workspace Synchronizing
+          </h3>
+          <p style={{ color: '#94A3B8', fontSize: '0.92rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            Synchronizing problem set with the contest server. If questions do not appear, try refreshing the arena or returning to the dashboard.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => fetchProblemDetails()}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={15} /> Retry Sync
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={onBack}
+              style={{
+                background: '#3B82F6',
+                border: '1px solid #3B82F6',
+                color: '#FFFFFF',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer'
+              }}
+            >
+              <ArrowLeft size={15} /> Return to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
