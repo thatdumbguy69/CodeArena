@@ -210,6 +210,10 @@ export const ContestMode = ({ contest, onFinishContest, onBack }) => {
     }
   };
 
+  useEffect(() => {
+    fetchContestDetails();
+  }, [contest?._id, contest?.slug]);
+
   const { socket, joinContest, emitBlurEvent } = useSocket();
 
   const maxAllowedBlurs = contestData?.maxAllowedBlurs !== undefined 

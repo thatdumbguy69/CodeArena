@@ -78,13 +78,16 @@ export const StudentProblemWorkspace = ({
   useEffect(() => {
     if (!contestMode) return;
     const preventTopPill = (e) => {
-      if (e.clientY <= 4) {
+      if (e.clientY <= 10) {
         e.stopPropagation();
+        e.stopImmediatePropagation();
       }
     };
     window.addEventListener('mousemove', preventTopPill, { capture: true, passive: false });
+    window.addEventListener('pointermove', preventTopPill, { capture: true, passive: false });
     return () => {
       window.removeEventListener('mousemove', preventTopPill, { capture: true });
+      window.removeEventListener('pointermove', preventTopPill, { capture: true });
     };
   }, [contestMode]);
 
@@ -936,8 +939,10 @@ export const StudentProblemWorkspace = ({
   }, [problemSlug]);
 
   const handleContestStarted = async () => {
+    setLoading(true);
     setContestStartsIn(0);
     contestStartsInRef.current = 0;
+    setCurrentContestData(prev => (prev ? { ...prev, status: 'Live' } : { status: 'Live' }));
     const toastId = Date.now();
     setTimerToast({ id: toastId, message: '🚀 The contest has officially started! Good luck!', type: 'added' });
     setTimeout(() => {
@@ -1104,8 +1109,6 @@ export const StudentProblemWorkspace = ({
       }
     }
 
-    if (!slugStr) return;
-
     try {
       setLoading(true);
       setExecResult(null);
@@ -1116,7 +1119,7 @@ export const StudentProblemWorkspace = ({
         ? currentContestData.problems
         : (contest?.problems || []);
 
-      if (contestProblems.length > 0) {
+      if (contestProblems.length > 0 && slugStr) {
         const matchingContestProb = contestProblems.find(p => {
           if (!p) return false;
           if (typeof p === 'string') return p === slugStr;
@@ -1138,11 +1141,51 @@ export const StudentProblemWorkspace = ({
         }
       }
 
+      if (!data && contestMode) {
+        // If in contest mode and direct question fetch failed, query contest details
+        try {
+          const cId = contest?._id || contest?.id || contest?.slug;
+          if (cId) {
+            const cRes = await api.get(`/contests/${cId}`);
+            if (cRes.data?.contest?.problems?.length > 0) {
+              const freshProbs = cRes.data.contest.problems;
+              setCurrentContestData(cRes.data.contest);
+              const firstP = freshProbs[0];
+              if (typeof firstP === 'object' && firstP.description) {
+                data = firstP;
+              } else {
+                const s = typeof firstP === 'object' ? (firstP.slug || firstP._id) : firstP;
+                const qRes = await api.get(`/questions/${s}`);
+                data = qRes.data?.question || qRes.data;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Contest problem refetch error:', err);
+        }
+      }
+
       if (!data) {
         const pool = (allProblems && allProblems.length > 0) ? allProblems : (practiceProblemsList || []);
         if (pool.length > 0) {
           data = pool.find(q => q.slug === slugStr || String(q._id) === String(slugStr) || String(q.id) === String(slugStr)) || pool[0];
         }
+      }
+
+      // Final fallback so question is never null during active contest mode
+      if (!data && contestMode) {
+        data = {
+          _id: 'default_contest_problem',
+          slug: 'contest-problem-1',
+          title: 'Problem 1',
+          description: 'Problem description is loading or synchronizing with contest server. Select a problem from the dropdown above if available.',
+          difficulty: 'Medium',
+          constraints: 'Standard contest constraints apply.',
+          inputFormat: 'Standard input format.',
+          outputFormat: 'Standard output format.',
+          sampleTestCases: [{ input: '', expectedOutput: '' }],
+          starterCode: defaultBoilerplates
+        };
       }
 
       if (data) {
@@ -1293,11 +1336,24 @@ export const StudentProblemWorkspace = ({
   };
 
   // Waiting Room View before Contest Starts
-  if (contestMode && contestStartsIn > 0 && !contestCompleted) {
-    const days = Math.floor(contestStartsIn / 86400);
-    const hrs = Math.floor((contestStartsIn % 86400) / 3600);
-    const mins = Math.floor((contestStartsIn % 3600) / 60);
-    const secs = contestStartsIn % 60;
+  const isUpcomingContest = Boolean(
+    contestMode &&
+    !contestCompleted &&
+    !disqualifiedReason &&
+    (
+      contestStartsIn > 0 ||
+      (currentContestData?.status === 'Upcoming') ||
+      (contest?.status === 'Upcoming' && (!currentContestData || currentContestData?.status === 'Upcoming')) ||
+      (problemSlug === 'contest-lobby' && !question)
+    )
+  );
+
+  if (isUpcomingContest) {
+    const displayStartsIn = Math.max(0, contestStartsIn);
+    const days = Math.floor(displayStartsIn / 86400);
+    const hrs = Math.floor((displayStartsIn % 86400) / 3600);
+    const mins = Math.floor((displayStartsIn % 3600) / 60);
+    const secs = displayStartsIn % 60;
 
     return (
       <div style={{
@@ -1596,10 +1652,13 @@ export const StudentProblemWorkspace = ({
 
   if (!question) {
     return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
-        <h3>Problem Not Found</h3>
-        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
-          <ArrowLeft size={16} /> Back to Practice
+      <div style={{ padding: '4rem', textAlign: 'center', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <h3 style={{ color: 'var(--text-ink)', fontWeight: 800, marginBottom: '0.5rem' }}>Problem Workspace Synchronizing</h3>
+        <p style={{ color: 'var(--text-slate)', maxWidth: '480px', marginBottom: '1.5rem' }}>
+          Loading the active problem set. If this persists, return to the contest dashboard.
+        </p>
+        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+          <ArrowLeft size={16} /> Return to Dashboard
         </button>
       </div>
     );
@@ -1634,8 +1693,11 @@ export const StudentProblemWorkspace = ({
     if (list.length === 0) {
       list = practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []);
     }
+    if (list.length === 0 && question) {
+      list = [question];
+    }
     return list;
-  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems]);
+  }, [contestMode, currentContestData?.problems, contest?.problems, practiceProblemsList, allProblems, question]);
   
   const getProblemIdentifier = (p) => {
     if (!p) return '';
