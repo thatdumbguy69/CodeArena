@@ -354,8 +354,8 @@ export const StudentPortal = ({
         targetSlugOrId = firstProb.slug || firstProb._id || firstProb.id;
       }
 
-      if (!targetSlugOrId && !tIsUpcoming) {
-        targetSlugOrId = 'two-sum';
+      if (!targetSlugOrId) {
+        targetSlugOrId = tIsUpcoming ? 'contest-lobby' : 'two-sum';
       }
 
       setActiveContest(targetContest);
@@ -363,7 +363,7 @@ export const StudentPortal = ({
     } catch (err) {
       console.error('Error entering contest:', err);
       setActiveContest(contestObj);
-      setActiveProblemSlug(null);
+      setActiveProblemSlug('contest-lobby');
     }
   };
 
@@ -386,10 +386,10 @@ export const StudentPortal = ({
   const liveContest = contests.find(c => c.status !== 'Ended' && (c.status === 'Live' || c.status === 'Active' || (c.remainingSecs !== undefined && c.remainingSecs > 0)));
 
   // Active Problem / Contest Workspace View
-  if (activeProblemSlug) {
+  if (activeProblemSlug || activeContest) {
     return (
       <StudentProblemWorkspace
-        problemSlug={activeProblemSlug}
+        problemSlug={activeProblemSlug || 'contest-lobby'}
         contestMode={!!activeContest}
         contest={activeContest}
         allProblems={questions}

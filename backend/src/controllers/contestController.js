@@ -222,7 +222,7 @@ const createContest = async (req, res) => {
       return res.status(400).json({ message: 'Contest title is required' });
     }
 
-    let effectiveMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 3) : undefined;
+    let effectiveMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 2) : undefined;
     let effectiveAutoDisq = autoDisqualify !== undefined ? Boolean(autoDisqualify) : undefined;
 
     if (effectiveMaxBlurs === undefined || effectiveAutoDisq === undefined) {
@@ -230,16 +230,16 @@ const createContest = async (req, res) => {
         if (getIsConnected()) {
           const sysSetting = await SystemSetting.findOne({ key: 'global_platform_settings' });
           if (sysSetting) {
-            if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = sysSetting.maxAllowedBlurs || 3;
+            if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = sysSetting.maxAllowedBlurs || 2;
             if (effectiveAutoDisq === undefined) effectiveAutoDisq = sysSetting.autoDisqualify !== false;
           }
         } else if (inMemoryStore.settings) {
-          if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = inMemoryStore.settings.maxAllowedBlurs || 3;
+          if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = inMemoryStore.settings.maxAllowedBlurs || 2;
           if (effectiveAutoDisq === undefined) effectiveAutoDisq = inMemoryStore.settings.autoDisqualify !== false;
         }
       } catch (e) {}
     }
-    if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = 3;
+    if (effectiveMaxBlurs === undefined) effectiveMaxBlurs = 2;
     if (effectiveAutoDisq === undefined) effectiveAutoDisq = true;
 
     const slug = slugify(title) + '-' + Math.floor(Math.random()*1000);
@@ -323,7 +323,7 @@ const updateContest = async (req, res) => {
     const { timeAdjustmentMins, startTime, duration, endTime, action, ...otherFields } = req.body;
 
     if (otherFields.maxAllowedBlurs !== undefined) {
-      otherFields.maxAllowedBlurs = Math.max(1, parseInt(otherFields.maxAllowedBlurs, 10) || 3);
+      otherFields.maxAllowedBlurs = Math.max(1, parseInt(otherFields.maxAllowedBlurs, 10) || 2);
     }
     if (otherFields.autoDisqualify !== undefined) {
       otherFields.autoDisqualify = Boolean(otherFields.autoDisqualify);
@@ -895,7 +895,7 @@ const logAntiCheatEvent = async (req, res) => {
     }
     if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
-    const maxAllowedBlurs = contest.maxAllowedBlurs !== undefined ? Math.max(1, contest.maxAllowedBlurs) : 3;
+    const maxAllowedBlurs = contest.maxAllowedBlurs !== undefined ? Math.max(1, contest.maxAllowedBlurs) : 2;
     const autoDisqualify = contest.autoDisqualify !== undefined ? contest.autoDisqualify : true;
     let finalBlurCount = blurCount || 1;
     let isDisq = false;
@@ -1006,7 +1006,7 @@ const getAllProctoringSummary = async (req, res) => {
         const u = session.user || {};
         const c = session.contest || {};
         const blurs = session.blurCount || 0;
-        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 3;
+        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 2;
         const autoDisq = c.autoDisqualify !== false;
         const isDisq = session.isDisqualified || (autoDisq && blurs >= maxBlurs);
 
@@ -1034,7 +1034,7 @@ const getAllProctoringSummary = async (req, res) => {
         const u = (inMemoryStore.users || []).find(user => String(user._id) === String(session.user)) || {};
         const c = (inMemoryStore.contests || []).find(cnt => String(cnt._id) === String(session.contest)) || {};
         const blurs = session.blurCount || 0;
-        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 3;
+        const maxBlurs = c.maxAllowedBlurs !== undefined ? c.maxAllowedBlurs : 2;
         const autoDisq = c.autoDisqualify !== false;
         const isDisq = session.isDisqualified || (autoDisq && blurs >= maxBlurs);
 

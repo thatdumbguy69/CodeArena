@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const SystemSetting = require('../models/SystemSetting');
 const Contest = require('../models/Contest');
@@ -7,7 +7,7 @@ const { authMiddleware, adminOnlyMiddleware, optionalAuthMiddleware } = require(
 
 const defaultSettings = {
   defaultDuration: 60,
-  maxAllowedBlurs: 3,
+  maxAllowedBlurs: 2,
   autoDisqualify: true,
   defaultTimeLimit: 2000,
   defaultMemoryLimit: 256,
@@ -51,7 +51,7 @@ router.put('/', authMiddleware, adminOnlyMiddleware, async (req, res) => {
       syncToActiveContests = true
     } = req.body;
 
-    const parsedMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 3) : 3;
+    const parsedMaxBlurs = maxAllowedBlurs !== undefined ? Math.max(1, parseInt(maxAllowedBlurs, 10) || 2) : 2;
     const parsedAutoDisq = autoDisqualify !== undefined ? Boolean(autoDisqualify) : true;
 
     const updates = {

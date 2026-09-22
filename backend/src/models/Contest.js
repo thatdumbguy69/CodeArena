@@ -11,7 +11,7 @@ const contestSchema = new mongoose.Schema({
   problems: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
   registeredStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   antiCheatEnabled: { type: Boolean, default: true },
-  maxAllowedBlurs: { type: Number, default: 3 },
+  maxAllowedBlurs: { type: Number, default: 2 },
   autoDisqualify: { type: Boolean, default: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }

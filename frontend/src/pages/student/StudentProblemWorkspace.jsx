@@ -1424,92 +1424,8 @@ export const StudentProblemWorkspace = ({
     );
   }
 
-  if (loading) {
-    return (
-      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
-        Loading Problem Workspace...
-      </div>
-    );
-  }
-
-  if (!question) {
-    return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
-        <h3>Problem Not Found</h3>
-        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
-          <ArrowLeft size={16} /> Back to Practice
-        </button>
-      </div>
-    );
-  }
-
-  const activeProblemsList = contestMode && contest?.problems
-    ? contest.problems
-    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
-  
-  const getProblemIdentifier = (p) => {
-    if (!p) return '';
-    if (typeof p === 'string') return p;
-    return p.slug || p._id || p.id || '';
-  };
-
-  const currentProblemIndex = activeProblemsList.findIndex(p => {
-    if (!p || !question) return false;
-    const pId = typeof p === 'string' ? p : (p._id || p.id);
-    const pSlug = typeof p === 'object' ? p.slug : null;
-    const pTitle = typeof p === 'object' ? p.title : null;
-
-    const qId = question._id || question.id;
-    const qSlug = question.slug;
-    const qTitle = question.title;
-
-    const idMatch = pId && qId && String(pId) === String(qId);
-    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
-                      (pId && qSlug && String(pId) === String(qSlug)) ||
-                      (pSlug && qId && String(pSlug) === String(qId));
-    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
-
-    return idMatch || slugMatch || titleMatch;
-  });
-
-  const selectedOptionValue = (() => {
-    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
-      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
-    }
-    if (question) {
-      const matched = activeProblemsList.find(p => {
-        const pId = typeof p === 'string' ? p : (p._id || p.id);
-        const pSlug = typeof p === 'object' ? p.slug : null;
-        const pTitle = typeof p === 'object' ? p.title : null;
-        return (
-          (pSlug && question.slug && pSlug === question.slug) ||
-          (pId && question._id && String(pId) === String(question._id)) ||
-          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
-        );
-      });
-      if (matched) return getProblemIdentifier(matched);
-    }
-    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
-  })();
-
-  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
-  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
-
-  const handleGoToPrevQuestion = () => {
-    if (hasPrevQuestion) {
-      const prevP = activeProblemsList[currentProblemIndex - 1];
-      fetchProblemDetails(getProblemIdentifier(prevP));
-    }
-  };
-
-  const handleGoToNextQuestion = () => {
-    if (hasNextQuestion) {
-      const nextP = activeProblemsList[currentProblemIndex + 1];
-      fetchProblemDetails(getProblemIdentifier(nextP));
-    }
-  };
-
-  if (contestCompleted) {
+  // Disqualified / Completed View
+  if (contestCompleted || disqualifiedReason) {
     if (disqualifiedReason) {
       return (
         <div className="container" style={{ padding: '3rem 1.5rem', maxWidth: '720px', textAlign: 'center' }}>
@@ -1604,14 +1520,99 @@ export const StudentProblemWorkspace = ({
                 onBack();
               }
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', fontSize: '1rem' }}
           >
-            <Eye size={16} /> View Results
+            <Trophy size={18} /> View Contest Results & Leaderboard
           </button>
         </div>
       </div>
     );
   }
+
+  if (loading) {
+    return (
+      <div style={{ height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-slate)' }}>
+        Loading Problem Workspace...
+      </div>
+    );
+  }
+
+  if (!question) {
+    return (
+      <div style={{ padding: '4rem', textAlign: 'center' }}>
+        <h3>Problem Not Found</h3>
+        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginTop: '1rem' }}>
+          <ArrowLeft size={16} /> Back to Practice
+        </button>
+      </div>
+    );
+  }
+
+  const activeProblemsList = contestMode && contest?.problems
+    ? contest.problems
+    : (practiceProblemsList.length > 0 ? practiceProblemsList : (allProblems || []));
+  
+  const getProblemIdentifier = (p) => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    return p.slug || p._id || p.id || '';
+  };
+
+  const currentProblemIndex = activeProblemsList.findIndex(p => {
+    if (!p || !question) return false;
+    const pId = typeof p === 'string' ? p : (p._id || p.id);
+    const pSlug = typeof p === 'object' ? p.slug : null;
+    const pTitle = typeof p === 'object' ? p.title : null;
+
+    const qId = question._id || question.id;
+    const qSlug = question.slug;
+    const qTitle = question.title;
+
+    const idMatch = pId && qId && String(pId) === String(qId);
+    const slugMatch = (pSlug && qSlug && pSlug === qSlug) ||
+                      (pId && qSlug && String(pId) === String(qSlug)) ||
+                      (pSlug && qId && String(pSlug) === String(qId));
+    const titleMatch = pTitle && qTitle && String(pTitle).toLowerCase().trim() === String(qTitle).toLowerCase().trim();
+
+    return idMatch || slugMatch || titleMatch;
+  });
+
+  const selectedOptionValue = (() => {
+    if (currentProblemIndex >= 0 && activeProblemsList[currentProblemIndex]) {
+      return getProblemIdentifier(activeProblemsList[currentProblemIndex]);
+    }
+    if (question) {
+      const matched = activeProblemsList.find(p => {
+        const pId = typeof p === 'string' ? p : (p._id || p.id);
+        const pSlug = typeof p === 'object' ? p.slug : null;
+        const pTitle = typeof p === 'object' ? p.title : null;
+        return (
+          (pSlug && question.slug && pSlug === question.slug) ||
+          (pId && question._id && String(pId) === String(question._id)) ||
+          (pTitle && question.title && String(pTitle).toLowerCase().trim() === String(question.title).toLowerCase().trim())
+        );
+      });
+      if (matched) return getProblemIdentifier(matched);
+    }
+    return activeProblemsList.length > 0 ? getProblemIdentifier(activeProblemsList[0]) : '';
+  })();
+
+  const hasPrevQuestion = activeProblemsList.length > 1 && currentProblemIndex > 0;
+  const hasNextQuestion = activeProblemsList.length > 1 && currentProblemIndex >= 0 && currentProblemIndex < activeProblemsList.length - 1;
+
+  const handleGoToPrevQuestion = () => {
+    if (hasPrevQuestion) {
+      const prevP = activeProblemsList[currentProblemIndex - 1];
+      fetchProblemDetails(getProblemIdentifier(prevP));
+    }
+  };
+
+  const handleGoToNextQuestion = () => {
+    if (hasNextQuestion) {
+      const nextP = activeProblemsList[currentProblemIndex + 1];
+      fetchProblemDetails(getProblemIdentifier(nextP));
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-paper)', position: 'relative' }}>
