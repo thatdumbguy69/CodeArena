@@ -550,11 +550,325 @@ const restoreDefaultQuestions = async (req, res) => {
   }
 };
 
+// Export Questions (Admin Only) - Full 6-Section Criteria Specs
+const exportQuestions = async (req, res) => {
+  try {
+    const { questionIds } = req.body || {};
+    let questionsToExport = [];
+
+    if (getIsConnected()) {
+      let query = {};
+      if (Array.isArray(questionIds) && questionIds.length > 0) {
+        const objectIds = [];
+        const slugs = [];
+        questionIds.forEach(id => {
+          if (typeof id === 'string' && id.match(/^[0-9a-fA-F]{24}$/)) {
+            objectIds.push(id);
+          } else {
+            slugs.push(String(id));
+          }
+        });
+        query = {
+          $or: [
+            ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
+            ...(slugs.length > 0 ? [{ slug: { $in: slugs } }] : [])
+          ]
+        };
+      }
+
+      // Fetch full documents including testCases, starterCode, referenceSolution
+      const docs = await Question.find(query).lean();
+      questionsToExport = docs;
+    } else {
+      let list = inMemoryStore.questions || [];
+      if (Array.isArray(questionIds) && questionIds.length > 0) {
+        const idSet = new Set(questionIds.map(String));
+        list = list.filter(q => idSet.has(String(q._id)) || idSet.has(String(q.id)) || idSet.has(String(q.slug)));
+      }
+      questionsToExport = list;
+    }
+
+    // Clean and normalize to pure criteria specs retaining all 6 sections
+    const formatted = questionsToExport.map(q => {
+      const cleanTestCases = (q.testCases || []).map(tc => ({
+        input: tc.input !== undefined ? String(tc.input) : '',
+        expectedOutput: tc.expectedOutput !== undefined ? String(tc.expectedOutput) : '',
+        isHidden: Boolean(tc.isHidden),
+        explanation: tc.explanation || '',
+        marks: tc.marks !== undefined && tc.marks !== null ? Number(tc.marks) : 10,
+        ...(tc.timeLimitOverride !== undefined ? { timeLimitOverride: Number(tc.timeLimitOverride) } : {}),
+        ...(tc.memoryLimitOverride !== undefined ? { memoryLimitOverride: Number(tc.memoryLimitOverride) } : {})
+      }));
+
+      return {
+        // Section 1: Basic Info
+        title: q.title || '',
+        slug: q.slug || slugify(q.title || ''),
+        difficulty: q.difficulty || 'Easy',
+        category: q.category || 'Algorithms',
+        points: q.points !== undefined && q.points !== null ? Number(q.points) : 100,
+        isPublic: q.isPublic !== undefined ? Boolean(q.isPublic) : true,
+        tags: Array.isArray(q.tags) ? q.tags : (typeof q.tags === 'string' ? q.tags.split(',').map(s => s.trim()).filter(Boolean) : []),
+
+        // Section 2: Statement
+        description: q.description || '',
+        inputFormat: q.inputFormat || '',
+        outputFormat: q.outputFormat || '',
+        constraints: q.constraints || '',
+
+        // Section 3: Settings & Execution Limits
+        timeLimit: q.timeLimit !== undefined ? Number(q.timeLimit) : 2.0,
+        memoryLimit: q.memoryLimit !== undefined ? Number(q.memoryLimit) : 256,
+        allowedLanguages: Array.isArray(q.allowedLanguages) && q.allowedLanguages.length > 0
+          ? q.allowedLanguages
+          : ['c', 'cpp', 'java', 'python', 'javascript'],
+        referenceSolution: q.referenceSolution && typeof q.referenceSolution === 'object'
+          ? {
+              c: q.referenceSolution.c || '',
+              cpp: q.referenceSolution.cpp || '',
+              java: q.referenceSolution.java || '',
+              python: q.referenceSolution.python || '',
+              javascript: q.referenceSolution.javascript || ''
+            }
+          : { c: '', cpp: '', java: '', python: '', javascript: '' },
+
+        // Section 4: Starter Code (Boilerplates)
+        starterCode: q.starterCode && typeof q.starterCode === 'object'
+          ? {
+              c: q.starterCode.c || '',
+              cpp: q.starterCode.cpp || '',
+              java: q.starterCode.java || '',
+              python: q.starterCode.python || '',
+              javascript: q.starterCode.javascript || ''
+            }
+          : { c: '', cpp: '', java: '', python: '', javascript: '' },
+
+        // Section 5: Test Cases
+        testCases: cleanTestCases,
+
+        // Sample data for preview / compatibility
+        sampleInput: q.sampleInput || '',
+        sampleOutput: q.sampleOutput || ''
+      };
+    });
+
+    return res.json({
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      count: formatted.length,
+      questions: formatted
+    });
+  } catch (err) {
+    console.error('Export questions error:', err);
+    res.status(500).json({ message: 'Error exporting questions', error: err.message });
+  }
+};
+
+// Import Questions (Admin Only) - Full 6-Section Criteria Parser & Validator
+const importQuestions = async (req, res) => {
+  try {
+    const rawQuestions = Array.isArray(req.body) ? req.body : (req.body.questions || []);
+    const collisionStrategy = req.body.collisionStrategy || 'suffix'; // 'suffix' | 'overwrite' | 'skip'
+
+    if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+      return res.status(400).json({ message: 'No questions provided for import.' });
+    }
+
+    const imported = [];
+    const skipped = [];
+    const overwritten = [];
+    const errors = [];
+
+    for (let i = 0; i < rawQuestions.length; i++) {
+      const q = rawQuestions[i];
+      const qTitle = q.title ? String(q.title).trim() : `Imported Question ${i + 1}`;
+
+      if (!q.description) {
+        errors.push({ index: i + 1, title: qTitle, error: 'Problem description is required.' });
+        continue;
+      }
+
+      // Ensure test cases
+      let testCases = Array.isArray(q.testCases) ? q.testCases : [];
+      if (testCases.length === 0) {
+        if (q.sampleInput || q.sampleOutput) {
+          testCases = [{
+            input: q.sampleInput || '',
+            expectedOutput: q.sampleOutput || '',
+            isHidden: false,
+            explanation: 'Sample Test Case',
+            marks: 10
+          }];
+        } else {
+          errors.push({ index: i + 1, title: qTitle, error: 'At least one testcase is required.' });
+          continue;
+        }
+      }
+
+      // Ensure at least 1 public sample test case
+      const hasPublic = testCases.some(tc => !tc.isHidden);
+      if (!hasPublic) {
+        testCases[0].isHidden = false;
+      }
+
+      const cleanTestCases = testCases.map(tc => ({
+        input: tc.input !== undefined ? String(tc.input) : '',
+        expectedOutput: tc.expectedOutput !== undefined ? String(tc.expectedOutput) : '',
+        isHidden: Boolean(tc.isHidden),
+        explanation: tc.explanation || '',
+        marks: tc.marks !== undefined && tc.marks !== null ? Number(tc.marks) : 10,
+        ...(tc.timeLimitOverride !== undefined ? { timeLimitOverride: Number(tc.timeLimitOverride) } : {}),
+        ...(tc.memoryLimitOverride !== undefined ? { memoryLimitOverride: Number(tc.memoryLimitOverride) } : {})
+      }));
+
+      const points = q.points !== undefined && q.points !== null && !isNaN(Number(q.points)) && Number(q.points) > 0
+        ? Number(q.points)
+        : cleanTestCases.reduce((acc, tc) => acc + (tc.marks || 10), 0);
+
+      let baseSlug = q.slug ? slugify(q.slug) : slugify(qTitle);
+      if (!baseSlug) baseSlug = `question-${Date.now()}`;
+
+      let finalTitle = qTitle;
+      let finalSlug = baseSlug;
+
+      // Check collision
+      let existingDoc = null;
+      if (getIsConnected()) {
+        existingDoc = await Question.findOne({ $or: [{ slug: finalSlug }, { title: finalTitle }] });
+      } else {
+        existingDoc = (inMemoryStore.questions || []).find(existing => existing.slug === finalSlug || existing.title.toLowerCase() === finalTitle.toLowerCase());
+      }
+
+      if (existingDoc) {
+        if (collisionStrategy === 'skip') {
+          skipped.push({ title: finalTitle, slug: finalSlug, reason: 'Already exists (skipped)' });
+          continue;
+        } else if (collisionStrategy === 'overwrite') {
+          // Overwrite existing question with imported specifications
+          const updatePayload = {
+            title: finalTitle,
+            description: q.description,
+            inputFormat: q.inputFormat || '',
+            outputFormat: q.outputFormat || '',
+            constraints: q.constraints || '',
+            difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
+            category: q.category || 'Algorithms',
+            points,
+            isPublic: q.isPublic !== undefined ? Boolean(q.isPublic) : true,
+            tags: Array.isArray(q.tags) ? q.tags : (typeof q.tags === 'string' ? q.tags.split(',').map(s => s.trim()).filter(Boolean) : []),
+            allowedLanguages: Array.isArray(q.allowedLanguages) && q.allowedLanguages.length > 0
+              ? q.allowedLanguages
+              : ['c', 'cpp', 'java', 'python', 'javascript'],
+            timeLimit: Number(q.timeLimit) || 2.0,
+            memoryLimit: Number(q.memoryLimit) || 256,
+            sampleInput: q.sampleInput || (cleanTestCases.find(tc => !tc.isHidden)?.input || ''),
+            sampleOutput: q.sampleOutput || (cleanTestCases.find(tc => !tc.isHidden)?.expectedOutput || ''),
+            starterCode: q.starterCode && typeof q.starterCode === 'object' ? q.starterCode : {},
+            referenceSolution: q.referenceSolution && typeof q.referenceSolution === 'object' ? q.referenceSolution : {},
+            testCases: cleanTestCases
+          };
+
+          if (getIsConnected()) {
+            await Question.findByIdAndUpdate(existingDoc._id, { $set: updatePayload });
+            const memIdx = (inMemoryStore.questions || []).findIndex(m => String(m._id) === String(existingDoc._id) || m.slug === existingDoc.slug);
+            if (memIdx !== -1) {
+              inMemoryStore.questions[memIdx] = { ...inMemoryStore.questions[memIdx], ...updatePayload };
+            }
+          } else {
+            Object.assign(existingDoc, updatePayload);
+          }
+
+          overwritten.push({ title: finalTitle, slug: finalSlug });
+          continue;
+        } else {
+          // collisionStrategy === 'suffix' -> generate unique slug and title
+          let suffixCounter = 1;
+          while (true) {
+            const candidateSlug = `${baseSlug}-imported${suffixCounter > 1 ? `-${suffixCounter}` : ''}`;
+            const candidateTitle = `${qTitle} (Imported${suffixCounter > 1 ? ` ${suffixCounter}` : ''})`;
+            let candidateExists;
+            if (getIsConnected()) {
+              candidateExists = await Question.findOne({ $or: [{ slug: candidateSlug }, { title: candidateTitle }] });
+            } else {
+              candidateExists = (inMemoryStore.questions || []).some(m => m.slug === candidateSlug || m.title.toLowerCase() === candidateTitle.toLowerCase());
+            }
+            if (!candidateExists) {
+              finalSlug = candidateSlug;
+              finalTitle = candidateTitle;
+              break;
+            }
+            suffixCounter++;
+          }
+        }
+      }
+
+      // Construct question document
+      const questionData = {
+        title: finalTitle,
+        slug: finalSlug,
+        description: q.description,
+        inputFormat: q.inputFormat || '',
+        outputFormat: q.outputFormat || '',
+        constraints: q.constraints || '',
+        difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
+        category: q.category || 'Algorithms',
+        points,
+        isPublic: q.isPublic !== undefined ? Boolean(q.isPublic) : true,
+        tags: Array.isArray(q.tags) ? q.tags : (typeof q.tags === 'string' ? q.tags.split(',').map(s => s.trim()).filter(Boolean) : []),
+        allowedLanguages: Array.isArray(q.allowedLanguages) && q.allowedLanguages.length > 0
+          ? q.allowedLanguages
+          : ['c', 'cpp', 'java', 'python', 'javascript'],
+        timeLimit: Number(q.timeLimit) || 2.0,
+        memoryLimit: Number(q.memoryLimit) || 256,
+        sampleInput: q.sampleInput || (cleanTestCases.find(tc => !tc.isHidden)?.input || ''),
+        sampleOutput: q.sampleOutput || (cleanTestCases.find(tc => !tc.isHidden)?.expectedOutput || ''),
+        starterCode: q.starterCode && typeof q.starterCode === 'object' ? q.starterCode : {},
+        referenceSolution: q.referenceSolution && typeof q.referenceSolution === 'object' ? q.referenceSolution : {},
+        testCases: cleanTestCases,
+        submissionsCount: 0,
+        acceptedCount: 0,
+        createdBy: req.user ? req.user.id : null,
+        createdAt: new Date()
+      };
+
+      if (getIsConnected()) {
+        const createdDoc = await Question.create(questionData);
+        inMemoryStore.questions.push(createdDoc.toObject());
+        imported.push({ title: createdDoc.title, slug: createdDoc.slug, id: createdDoc._id });
+      } else {
+        const memQ = {
+          _id: 'mem_q_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+          ...questionData
+        };
+        inMemoryStore.questions.push(memQ);
+        imported.push({ title: memQ.title, slug: memQ.slug, id: memQ._id });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Import processed: ${imported.length} imported, ${overwritten.length} overwritten, ${skipped.length} skipped.`,
+      importedCount: imported.length,
+      overwrittenCount: overwritten.length,
+      skippedCount: skipped.length,
+      imported,
+      overwritten,
+      skipped,
+      errors
+    });
+  } catch (err) {
+    console.error('Import questions error:', err);
+    res.status(500).json({ message: 'Error importing questions', error: err.message });
+  }
+};
+
 module.exports = {
   getAllQuestions,
   getQuestionByIdOrSlug,
   createQuestion,
   updateQuestion,
   deleteQuestion,
-  restoreDefaultQuestions
+  restoreDefaultQuestions,
+  exportQuestions,
+  importQuestions
 };

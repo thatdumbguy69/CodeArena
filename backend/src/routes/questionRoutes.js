@@ -6,11 +6,15 @@ const {
   createQuestion,
   updateQuestion,
   deleteQuestion,
-  restoreDefaultQuestions
+  restoreDefaultQuestions,
+  exportQuestions,
+  importQuestions
 } = require('../controllers/questionController');
 const { authMiddleware, optionalAuthMiddleware, adminOnlyMiddleware } = require('../middleware/auth');
 
 router.get('/', optionalAuthMiddleware, getAllQuestions);
+router.post('/export', authMiddleware, adminOnlyMiddleware, exportQuestions);
+router.post('/import', authMiddleware, adminOnlyMiddleware, importQuestions);
 router.post('/restore-defaults', authMiddleware, adminOnlyMiddleware, restoreDefaultQuestions);
 router.get('/:id', optionalAuthMiddleware, getQuestionByIdOrSlug);
 router.post('/', authMiddleware, adminOnlyMiddleware, createQuestion);
