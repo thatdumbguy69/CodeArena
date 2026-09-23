@@ -11,10 +11,12 @@ import { StudentSubmissionsSection } from './sections/StudentSubmissionsSection'
 import { StudentLeaderboardSection } from './sections/StudentLeaderboardSection';
 import { StudentProfileSection } from './sections/StudentProfileSection';
 import { StudentProblemWorkspace } from './StudentProblemWorkspace';
+import { AboutCodeArenaSection } from '../../components/common/AboutCodeArenaSection';
 
 export const StudentPortal = ({
   initialTab = 'dashboard',
-  onSelectProblemExternal
+  onSelectProblemExternal,
+  setCurrentTab
 }) => {
   const { user, logout } = useAuth();
   const { socket } = useSocket();
@@ -27,6 +29,21 @@ export const StudentPortal = ({
       return initialTab || 'dashboard';
     }
   });
+
+  const [aboutSubTab, setAboutSubTab] = useState(() => {
+    try {
+      return sessionStorage.getItem('codearena_student_aboutSubTab') || 'home';
+    } catch (e) {
+      return 'home';
+    }
+  });
+
+  const handleSelectAboutSubTab = (sub) => {
+    setAboutSubTab(sub);
+    try {
+      sessionStorage.setItem('codearena_student_aboutSubTab', sub);
+    } catch (e) {}
+  };
 
   const [activeProblemSlug, setActiveProblemSlug] = useState(() => {
     try {
@@ -90,7 +107,8 @@ export const StudentPortal = ({
     contests: 'Contests',
     submissions: 'Submissions',
     leaderboard: 'Leaderboard',
-    profile: 'Profile'
+    profile: 'Profile',
+    about: 'About CodeArena'
   };
 
   const fetchStudentPortalData = useCallback(async (isInitial = false) => {
@@ -459,6 +477,8 @@ export const StudentPortal = ({
         setMobileOpen={setMobileOpen}
         liveContest={liveContest}
         onSignOut={logout}
+        aboutSubTab={aboutSubTab}
+        onSelectAboutSubTab={handleSelectAboutSubTab}
       />
 
       {/* 2. Main Right Content Area */}
@@ -542,6 +562,29 @@ export const StudentPortal = ({
               submissions={submissions}
               onSignOut={logout}
               onSelectProblem={handleSelectProblem}
+            />
+          )}
+
+          {activeTab === 'about' && (
+            <AboutCodeArenaSection
+              activeSubTab={aboutSubTab}
+              onSelectSubTab={handleSelectAboutSubTab}
+              setCurrentTab={setCurrentTab}
+              onNavigatePortalTab={(targetTab) => {
+                setActiveProblemSlug(null);
+                setActiveContest(null);
+                if (targetTab === 'problems' || targetTab === 'practice') {
+                  setActiveTab('practice');
+                } else if (targetTab === 'contests' || targetTab === 'contest') {
+                  setActiveTab('contests');
+                } else if (targetTab === 'leaderboard') {
+                  setActiveTab('leaderboard');
+                } else if (targetTab === 'submissions') {
+                  setActiveTab('submissions');
+                } else {
+                  setActiveTab('dashboard');
+                }
+              }}
             />
           )}
         </main>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Code2,
@@ -6,11 +6,15 @@ import {
   Trophy,
   BarChart2,
   Shield,
-  UserCheck
+  UserCheck,
+  Info,
+  ChevronDown
 } from 'lucide-react';
+import { ABOUT_SUBTABS } from './common/AboutCodeArenaSection';
 
 export const Navbar = ({ currentTab, setCurrentTab, landingSubTab, navigateLandingSub }) => {
   const { user } = useAuth();
+  const [aboutExpanded, setAboutExpanded] = useState(() => currentTab === 'landing');
 
   // Hide general navigation sidebar during problem solving (arena and contest mode) or when inside Admin Portal
   const isAdminTab = currentTab === 'admin' || currentTab === 'create-problem' || currentTab === 'host-contest' || currentTab === 'admin-analytics';
@@ -83,6 +87,62 @@ export const Navbar = ({ currentTab, setCurrentTab, landingSubTab, navigateLandi
                   Admin Panel
                 </button>
               </>
+            )}
+
+            {/* About CodeArena info tab with expandable subtabs */}
+            <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.65rem 0' }} />
+            <button
+              className={`sidebar-link ${currentTab === 'landing' ? 'active' : ''}`}
+              onClick={() => {
+                setAboutExpanded(prev => !prev);
+                if (navigateLandingSub) navigateLandingSub('home');
+                setCurrentTab('landing');
+              }}
+              style={{ justifyContent: 'space-between' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Info size={16} />
+                <span>About CodeArena</span>
+              </div>
+              <ChevronDown
+                size={14}
+                style={{
+                  transform: aboutExpanded ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease',
+                  color: 'var(--text-secondary)'
+                }}
+              />
+            </button>
+
+            {aboutExpanded && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.2rem',
+                marginLeft: '1.25rem',
+                paddingLeft: '0.75rem',
+                borderLeft: '2px solid rgba(46, 94, 255, 0.25)',
+                marginTop: '0.25rem'
+              }}>
+                {ABOUT_SUBTABS.map(sub => {
+                  const isSubActive = currentTab === 'landing' && landingSubTab === sub.id;
+                  const SubIcon = sub.icon;
+                  return (
+                    <button
+                      key={sub.id}
+                      className={`sidebar-link ${isSubActive ? 'active' : ''}`}
+                      onClick={() => {
+                        if (navigateLandingSub) navigateLandingSub(sub.id);
+                        setCurrentTab('landing');
+                      }}
+                      style={{ fontSize: '0.8rem', padding: '0.35rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.55rem' }}
+                    >
+                      <SubIcon size={13} />
+                      <span>{sub.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </nav>
         </div>

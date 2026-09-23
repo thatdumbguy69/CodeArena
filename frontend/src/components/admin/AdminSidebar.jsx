@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Trophy,
@@ -11,8 +11,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Radio,
-  Layers
+  Layers,
+  Info,
+  ChevronDown
 } from 'lucide-react';
+import { ABOUT_SUBTABS } from '../common/AboutCodeArenaSection';
 
 export const AdminSidebar = ({
   activeSection,
@@ -27,8 +30,20 @@ export const AdminSidebar = ({
   activeWorkspaceContest = null,
   onOpenWorkspace = null,
   liveContest = null,
-  contests = []
+  contests = [],
+  aboutSubTab = 'home',
+  onSelectAboutSubTab = null
 }) => {
+  const [aboutExpanded, setAboutExpanded] = useState(() => {
+    return activeSection === 'about';
+  });
+
+  useEffect(() => {
+    if (activeSection === 'about') {
+      setAboutExpanded(true);
+    }
+  }, [activeSection]);
+
   const navSections = [
     {
       title: 'Live Ops',
@@ -77,10 +92,30 @@ export const AdminSidebar = ({
         { id: 'results-reports', label: 'Results & Reports', icon: BarChart3, badge: null },
         { id: 'user-management', label: 'Users', icon: UserCog, badge: null }
       ]
+    },
+    {
+      title: 'Platform Info',
+      items: [
+        { id: 'about', label: 'About CodeArena', icon: Info, badge: null, isExpandable: true }
+      ]
     }
   ];
 
   const handleItemClick = (itemId) => {
+    if (itemId === 'about') {
+      const next = !aboutExpanded;
+      setAboutExpanded(next);
+      if (collapsed && setCollapsed) {
+        setCollapsed(false);
+      }
+      setActiveSection('about');
+      if (onSelectAboutSubTab) {
+        onSelectAboutSubTab('home');
+      }
+      if (mobileOpen) setMobileOpen(false);
+      return;
+    }
+
     if (itemId === 'workspace') {
       if (activeWorkspaceContest) {
         // Already in active workspace
@@ -253,47 +288,111 @@ export const AdminSidebar = ({
               {section.items.map(item => {
                 const Icon = item.icon;
                 const active = isItemActive(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleItemClick(item.id)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: collapsed ? 'center' : 'space-between',
-                      padding: collapsed ? '0.75rem 0' : '0.6rem 0.85rem',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: active ? 'rgba(46, 94, 255, 0.08)' : 'transparent',
-                      color: active ? 'var(--accent-blue)' : 'var(--text-ink)',
-                      fontWeight: active ? 700 : 500,
-                      fontSize: '0.88rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    title={collapsed ? item.label : ''}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <Icon size={18} color={active ? 'var(--accent-blue)' : 'var(--text-secondary)'} />
-                      {!collapsed && <span>{item.label}</span>}
-                    </div>
+                const isExpandable = item.isExpandable;
 
-                    {!collapsed && item.badge && (
-                      typeof item.badge === 'string' ? (
-                        <span style={{
-                          fontSize: '0.65rem',
-                          fontWeight: 800,
-                          padding: '0.15rem 0.45rem',
-                          borderRadius: '4px',
-                          background: item.badge === 'LIVE' || item.badge === 'REC' ? '#FEE2E2' : 'var(--bg-paper)',
-                          color: item.badge === 'LIVE' || item.badge === 'REC' ? '#DC2626' : 'var(--text-secondary)'
+                return (
+                  <React.Fragment key={item.id}>
+                    <button
+                      onClick={() => handleItemClick(item.id)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: collapsed ? 'center' : 'space-between',
+                        padding: collapsed ? '0.75rem 0' : '0.6rem 0.85rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: active ? 'rgba(46, 94, 255, 0.08)' : 'transparent',
+                        color: active ? 'var(--accent-blue)' : 'var(--text-ink)',
+                        fontWeight: active ? 700 : 500,
+                        fontSize: '0.88rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title={collapsed ? item.label : ''}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Icon size={18} color={active ? 'var(--accent-blue)' : 'var(--text-secondary)'} />
+                        {!collapsed && <span>{item.label}</span>}
+                      </div>
+
+                      {!collapsed && isExpandable && (
+                        <div style={{
+                          display: 'inline-flex',
+                          transform: aboutExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.2s ease',
+                          color: active ? 'var(--accent-blue)' : 'var(--text-secondary)'
                         }}>
-                          {item.badge}
-                        </span>
-                      ) : item.badge
+                          <ChevronDown size={15} />
+                        </div>
+                      )}
+
+                      {!collapsed && !isExpandable && item.badge && (
+                        typeof item.badge === 'string' ? (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: '4px',
+                            background: item.badge === 'LIVE' || item.badge === 'REC' ? '#FEE2E2' : 'var(--bg-paper)',
+                            color: item.badge === 'LIVE' || item.badge === 'REC' ? '#DC2626' : 'var(--text-secondary)'
+                          }}>
+                            {item.badge}
+                          </span>
+                        ) : item.badge
+                      )}
+                    </button>
+
+                    {/* Subtabs Drawer for About CodeArena */}
+                    {!collapsed && isExpandable && aboutExpanded && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.2rem',
+                        marginLeft: '1.25rem',
+                        paddingLeft: '0.75rem',
+                        borderLeft: '2px solid rgba(46, 94, 255, 0.25)',
+                        marginTop: '0.25rem',
+                        marginBottom: '0.5rem'
+                      }}>
+                        {ABOUT_SUBTABS.map(sub => {
+                          const isSubActive = activeSection === 'about' && (aboutSubTab || 'home') === sub.id;
+                          const SubIcon = sub.icon;
+                          return (
+                            <button
+                              key={sub.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveSection('about');
+                                if (onSelectAboutSubTab) {
+                                  onSelectAboutSubTab(sub.id);
+                                }
+                                if (mobileOpen) setMobileOpen(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.55rem',
+                                padding: '0.35rem 0.6rem',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: isSubActive ? 'rgba(46, 94, 255, 0.1)' : 'transparent',
+                                color: isSubActive ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                                fontWeight: isSubActive ? 700 : 500,
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <SubIcon size={13} color={isSubActive ? 'var(--accent-blue)' : 'var(--text-secondary)'} />
+                              <span>{sub.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
-                  </button>
+                  </React.Fragment>
                 );
               })}
             </div>

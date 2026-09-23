@@ -220,17 +220,39 @@ const AppContent = () => {
           )}
 
           {currentTab === 'contests' && (
-            <ContestList
-              onEnterContest={handleEnterContest}
-              setCurrentTab={setCurrentTab}
-            />
+            isAdminUser ? (
+              <AdminDashboard
+                setCurrentTab={setCurrentTab}
+                setSelectedContestAnalytics={setSelectedContestAnalytics}
+                setEditingProblem={setEditingProblem}
+                setEditingContest={setEditingContest}
+              />
+            ) : isStudentPortal ? (
+              <StudentDashboard setCurrentTab={setCurrentTab} onSelectProblem={handleSelectProblem} />
+            ) : (
+              <ContestList
+                onEnterContest={handleEnterContest}
+                setCurrentTab={setCurrentTab}
+              />
+            )
           )}
 
           {currentTab === 'problems' && (
-            <ProblemList
-              onSelectProblem={handleSelectProblem}
-              setCurrentTab={setCurrentTab}
-            />
+            isAdminUser ? (
+              <AdminDashboard
+                setCurrentTab={setCurrentTab}
+                setSelectedContestAnalytics={setSelectedContestAnalytics}
+                setEditingProblem={setEditingProblem}
+                setEditingContest={setEditingContest}
+              />
+            ) : isStudentPortal ? (
+              <StudentDashboard setCurrentTab={setCurrentTab} onSelectProblem={handleSelectProblem} />
+            ) : (
+              <ProblemList
+                onSelectProblem={handleSelectProblem}
+                setCurrentTab={setCurrentTab}
+              />
+            )
           )}
 
           {currentTab === 'arena' && (
@@ -241,7 +263,18 @@ const AppContent = () => {
           )}
 
           {currentTab === 'leaderboard' && (
-            <Leaderboard setCurrentTab={setCurrentTab} />
+            isAdminUser ? (
+              <AdminDashboard
+                setCurrentTab={setCurrentTab}
+                setSelectedContestAnalytics={setSelectedContestAnalytics}
+                setEditingProblem={setEditingProblem}
+                setEditingContest={setEditingContest}
+              />
+            ) : isStudentPortal ? (
+              <StudentDashboard setCurrentTab={setCurrentTab} onSelectProblem={handleSelectProblem} />
+            ) : (
+              <Leaderboard setCurrentTab={setCurrentTab} />
+            )
           )}
 
           {currentTab === 'admin' && (

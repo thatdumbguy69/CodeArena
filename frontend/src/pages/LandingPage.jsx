@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import Editor from '@monaco-editor/react';
 import api from '../services/api';
 
-export const LandingPage = ({ setCurrentTab, landingSubTab, setLandingSubTab, setSelectedProblemSlug }) => {
+export const LandingPage = ({ setCurrentTab, landingSubTab, setLandingSubTab, setSelectedProblemSlug, onNavigatePortalTab }) => {
   const { user } = useAuth();
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactLoading, setContactLoading] = useState(false);
@@ -105,7 +105,9 @@ public class Solution {
                 <button
                   className="btn btn-primary"
                   onClick={() => {
-                    if (user) {
+                    if (onNavigatePortalTab) {
+                      onNavigatePortalTab('dashboard');
+                    } else if (user) {
                       setCurrentTab('dashboard');
                     } else {
                       setCurrentTab('auth');
@@ -521,7 +523,7 @@ public class Solution {
                   Andhra Pradesh, India
                 </p>
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-slate)' }}>
-                  Department: Computer Science &amp; Engineering (CSE)
+                  Department: CSE(AI&amp;ML)
                 </div>
               </div>
 
@@ -538,7 +540,7 @@ public class Solution {
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-slate)' }}>Platform Lead:</span>{' '}
-                    <span>Coders' Club Executive Team</span>
+                    <span>Coders' Club Technical Team</span>
                   </div>
                 </div>
               </div>

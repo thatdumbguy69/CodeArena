@@ -1,10 +1,32 @@
 import React from 'react';
 import { Code2, Shield, Mail, MapPin, Phone } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-export const Footer = ({ setCurrentTab, landingSubTab, navigateLandingSub }) => {
+export const Footer = ({
+  setCurrentTab,
+  landingSubTab,
+  navigateLandingSub,
+  onNavigatePortalTab
+}) => {
+  const { user } = useAuth();
   const currentYear = new Date().getFullYear();
 
   const handleNav = (tab, subTab = 'home') => {
+    if (onNavigatePortalTab) {
+      onNavigatePortalTab(tab);
+      return;
+    }
+
+    if (user) {
+      if (user.role === 'admin') {
+        if (setCurrentTab) setCurrentTab('admin');
+        return;
+      } else {
+        if (setCurrentTab) setCurrentTab('dashboard');
+        return;
+      }
+    }
+
     if (setCurrentTab) {
       setCurrentTab(tab);
     } else if (navigateLandingSub) {
@@ -33,7 +55,10 @@ export const Footer = ({ setCurrentTab, landingSubTab, navigateLandingSub }) => 
           
           {/* Column 1: Brand & Description */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.8rem' }}>
+            <div
+              onClick={() => navigateLandingSub ? navigateLandingSub('home') : handleNav('dashboard')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.8rem', cursor: 'pointer' }}
+            >
               <img
                 src="/coders_club_logo.png"
                 alt="Coders' Club Logo"
