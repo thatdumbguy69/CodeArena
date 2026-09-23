@@ -438,7 +438,7 @@ const getUserSubmissions = async (req, res) => {
       }
 
       const submissions = await Submission.find(filter)
-        .select('-code -details -antiCheatLogs')
+        .select('-details -antiCheatLogs')
         .populate('user', 'name teamName email')
         .populate('question', 'title difficulty points')
         .sort({ createdAt: -1 })
@@ -479,7 +479,7 @@ const getSubmissionById = async (req, res) => {
       if (!submission) return res.status(404).json({ message: 'Submission not found' });
       return res.json({ submission });
     } else {
-      const submission = inMemoryStore.submissions.find(s => String(s._id) === id);
+      const submission = inMemoryStore.submissions.find(s => String(s._id) === id || String(s.id) === id);
       if (!submission) return res.status(404).json({ message: 'Submission not found' });
       return res.json({ submission });
     }
