@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileCode, Search, Filter, Eye, CheckCircle, XCircle, Clock, Database, Trash2, AlertTriangle } from 'lucide-react';
 import { SubmissionInspectorModal } from '../../../components/admin/modals/SubmissionInspectorModal';
 import { ConfirmActionModal } from '../../../components/admin/modals/ConfirmActionModal';
@@ -6,15 +6,55 @@ import { ConfirmActionModal } from '../../../components/admin/modals/ConfirmActi
 export const SubmissionsSection = ({
   submissions = [],
   contests = [],
+  selectedContestId: propSelectedContestId,
+  onSelectContest,
   onDeleteAllSubmissions,
   onDeleteSubmission
 }) => {
   const [search, setSearch] = useState('');
   const [resultFilter, setResultFilter] = useState('All');
-  const [contestFilter, setContestFilter] = useState('All');
+
+  const getInitialContestFilter = () => {
+    if (propSelectedContestId) {
+      return (propSelectedContestId === 'all' || propSelectedContestId === 'global' || propSelectedContestId === 'All')
+        ? 'All'
+        : propSelectedContestId;
+    }
+    try {
+      const stored = sessionStorage.getItem('codearena_admin_selected_contest');
+      if (stored) {
+        return (stored === 'all' || stored === 'global' || stored === 'All') ? 'All' : stored;
+      }
+    } catch (e) {}
+    return 'All';
+  };
+
+  const [contestFilter, setContestFilter] = useState(getInitialContestFilter);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [confirmDeleteSingle, setConfirmDeleteSingle] = useState({ isOpen: false, subId: null });
+
+  useEffect(() => {
+    if (propSelectedContestId) {
+      const mapped = (propSelectedContestId === 'all' || propSelectedContestId === 'global' || propSelectedContestId === 'All')
+        ? 'All'
+        : propSelectedContestId;
+      setContestFilter(mapped);
+    }
+  }, [propSelectedContestId]);
+
+  const handleContestChange = (e) => {
+    const val = e.target.value;
+    setContestFilter(val);
+    const syncVal = val === 'All' ? 'global' : val;
+    if (onSelectContest) {
+      onSelectContest(syncVal);
+    } else {
+      try {
+        sessionStorage.setItem('codearena_admin_selected_contest', syncVal);
+      } catch (err) {}
+    }
+  };
 
   // Deduplicate submissions by unique ID
   const seenIds = new Set();
@@ -114,7 +154,7 @@ export const SubmissionsSection = ({
         {/* Individual Contest Dropdown Filter */}
         <select
           value={contestFilter}
-          onChange={e => setContestFilter(e.target.value)}
+          onChange={handleContestChange}
           style={{ padding: '0.55rem 0.85rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#FFF', fontWeight: 600, fontSize: '0.88rem' }}
         >
           <option value="All">🌐 All / Global Submissions</option>
