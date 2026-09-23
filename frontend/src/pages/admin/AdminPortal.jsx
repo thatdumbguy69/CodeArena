@@ -18,6 +18,7 @@ import { SettingsSection } from './sections/SettingsSection';
 import { SubmissionsSection } from './sections/SubmissionsSection';
 import { ContestWorkspace } from './ContestWorkspace';
 import { ConfirmActionModal } from '../../components/admin/modals/ConfirmActionModal';
+import { AboutCodeArenaSection } from '../../components/common/AboutCodeArenaSection';
 
 // Web Audio API Synth Alert Chime for Real-Time Disqualification Alerts
 const playDisqualificationChime = () => {
@@ -98,6 +99,21 @@ export const AdminPortal = ({
     setSelectedAdminContestId(contestId);
     try {
       sessionStorage.setItem('codearena_admin_selected_contest', contestId);
+    } catch (e) {}
+  };
+
+  const [aboutSubTab, setAboutSubTab] = useState(() => {
+    try {
+      return sessionStorage.getItem('codearena_admin_aboutSubTab') || 'home';
+    } catch (e) {
+      return 'home';
+    }
+  });
+
+  const handleSelectAboutSubTab = (sub) => {
+    setAboutSubTab(sub);
+    try {
+      sessionStorage.setItem('codearena_admin_aboutSubTab', sub);
     } catch (e) {}
   };
 
@@ -621,7 +637,8 @@ export const AdminPortal = ({
     'live-proctoring': 'Live Proctoring',
     'results-reports': 'Results & Reports',
     'user-management': 'User Management',
-    'settings': 'Settings'
+    'settings': 'Settings',
+    'about': 'About CodeArena'
   };
 
   const liveContest = contests.find(c => c.status === 'Live' || c.remainingSecs > 0);
@@ -747,6 +764,8 @@ export const AdminPortal = ({
         liveContest={liveContest}
         contests={contests}
         violationCount={liveViolationCount}
+        aboutSubTab={aboutSubTab}
+        onSelectAboutSubTab={handleSelectAboutSubTab}
       />
 
       {/* Main Container Area */}
@@ -865,6 +884,28 @@ export const AdminPortal = ({
 
               {activeSection === 'settings' && (
                 <SettingsSection currentUser={user} />
+              )}
+
+              {activeSection === 'about' && (
+                <AboutCodeArenaSection
+                  activeSubTab={aboutSubTab}
+                  onSelectSubTab={handleSelectAboutSubTab}
+                  setCurrentTab={setCurrentTab}
+                  onNavigatePortalTab={(targetTab) => {
+                    setActiveWorkspaceContest(null);
+                    if (targetTab === 'problems' || targetTab === 'practice') {
+                      setActiveSection('problem-bank');
+                    } else if (targetTab === 'contests' || targetTab === 'contest') {
+                      setActiveSection('contests');
+                    } else if (targetTab === 'leaderboard' || targetTab === 'results') {
+                      setActiveSection('results-reports');
+                    } else if (targetTab === 'submissions') {
+                      setActiveSection('submissions');
+                    } else {
+                      setActiveSection('dashboard');
+                    }
+                  }}
+                />
               )}
             </>
           )}
