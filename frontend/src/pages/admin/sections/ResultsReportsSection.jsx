@@ -8,14 +8,50 @@ import { useSocket } from '../../../context/SocketContext';
 export const ResultsReportsSection = ({
   contests = [],
   analytics,
-  currentUser
+  currentUser,
+  selectedContestId: propSelectedContestId,
+  onSelectContest,
+  onViewSubmissions
 }) => {
   const { socket, joinContest } = useSocket();
   const [activeSubTab, setActiveSubTab] = useState('leaderboard'); // leaderboard | analytics
-  const [selectedContestId, setSelectedContestId] = useState('global');
+
+  const getInitialContestId = () => {
+    if (propSelectedContestId) {
+      return (propSelectedContestId === 'all' || propSelectedContestId === 'All') ? 'global' : propSelectedContestId;
+    }
+    try {
+      const stored = sessionStorage.getItem('codearena_admin_selected_contest');
+      if (stored) {
+        return (stored === 'all' || stored === 'All') ? 'global' : stored;
+      }
+    } catch (e) {}
+    return 'global';
+  };
+
+  const [selectedContestId, setSelectedContestId] = useState(getInitialContestId);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (propSelectedContestId) {
+      const mapped = (propSelectedContestId === 'all' || propSelectedContestId === 'All') ? 'global' : propSelectedContestId;
+      setSelectedContestId(mapped);
+    }
+  }, [propSelectedContestId]);
+
+  const handleContestChange = (e) => {
+    const val = e.target.value;
+    setSelectedContestId(val);
+    if (onSelectContest) {
+      onSelectContest(val);
+    } else {
+      try {
+        sessionStorage.setItem('codearena_admin_selected_contest', val);
+      } catch (err) {}
+    }
+  };
 
   useEffect(() => {
     fetchLeaderboard();
@@ -134,7 +170,7 @@ export const ResultsReportsSection = ({
               <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-ink)' }}>Select Session:</span>
               <select
                 value={selectedContestId}
-                onChange={e => setSelectedContestId(e.target.value)}
+                onChange={handleContestChange}
                 style={{ padding: '0.45rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#FFF', fontWeight: 600, fontSize: '0.88rem' }}
               >
                 <option value="global">🌐 Global Platform Rankings</option>
@@ -167,7 +203,16 @@ export const ResultsReportsSection = ({
             onSearchChange={setSearch}
             currentUserId={currentUser?.id || currentUser?._id}
             currentUserEmail={currentUser?.email}
+            currentUserTeam={currentUser?.teamName}
+            currentUserRole={currentUser?.role || 'admin'}
             emptyMessage="No candidate rankings found for selected contest."
+            contestId={selectedContestId}
+            onViewSubmissions={(targetContestId, qId, userId, row) => {
+              const cId = (targetContestId && targetContestId !== 'global') ? targetContestId : selectedContestId;
+              if (onViewSubmissions) {
+                onViewSubmissions(cId, qId, userId, row);
+              }
+            }}
           />
         </>
       )}

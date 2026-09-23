@@ -84,6 +84,23 @@ export const AdminPortal = ({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Selected Contest across Submissions & Results/Reports (Persisted across tab switches and session)
+  const [selectedAdminContestId, setSelectedAdminContestId] = useState(() => {
+    try {
+      return sessionStorage.getItem('codearena_admin_selected_contest') || 'global';
+    } catch (e) {
+      return 'global';
+    }
+  });
+
+  const handleSelectAdminContest = (contestId) => {
+    if (!contestId) return;
+    setSelectedAdminContestId(contestId);
+    try {
+      sessionStorage.setItem('codearena_admin_selected_contest', contestId);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     try {
       if (activeSection) sessionStorage.setItem('codearena_admin_activeSection', activeSection);
@@ -804,6 +821,8 @@ export const AdminPortal = ({
                 <SubmissionsSection
                   submissions={submissions}
                   contests={contests}
+                  selectedContestId={selectedAdminContestId}
+                  onSelectContest={handleSelectAdminContest}
                   onDeleteAllSubmissions={handleDeleteAllSubmissions}
                   onDeleteSubmission={handleDeleteSubmission}
                 />
@@ -822,6 +841,15 @@ export const AdminPortal = ({
                   contests={contests}
                   analytics={analytics}
                   currentUser={user}
+                  selectedContestId={selectedAdminContestId}
+                  onSelectContest={handleSelectAdminContest}
+                  onViewSubmissions={(targetContestId) => {
+                    if (targetContestId) {
+                      handleSelectAdminContest(targetContestId);
+                    }
+                    setActiveWorkspaceContest(null);
+                    setActiveSection('submissions');
+                  }}
                 />
               )}
 
