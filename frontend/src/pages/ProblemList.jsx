@@ -42,7 +42,21 @@ export const ProblemList = ({ onSelectProblem, setCurrentTab }) => {
 
   const getProblemStatus = (qId, slug) => {
     if (!user || userSubmissions.length === 0) return null;
-    const subs = userSubmissions.filter(s => String(s.question) === String(qId) || String(s.question) === String(slug));
+    const targetKeys = [String(qId || '').toLowerCase(), String(slug || '').toLowerCase()].filter(Boolean);
+    const subs = userSubmissions.filter(s => {
+      if (!s) return false;
+      const keys = [];
+      if (typeof s.question === 'object' && s.question !== null) {
+        if (s.question._id) keys.push(String(s.question._id).toLowerCase());
+        if (s.question.id) keys.push(String(s.question.id).toLowerCase());
+        if (s.question.slug) keys.push(String(s.question.slug).toLowerCase());
+      } else if (s.question) {
+        keys.push(String(s.question).toLowerCase());
+      }
+      if (s.questionSlug) keys.push(String(s.questionSlug).toLowerCase());
+      if (s.questionId) keys.push(String(s.questionId).toLowerCase());
+      return keys.some(k => targetKeys.includes(k));
+    });
     if (subs.some(s => s.verdict === 'Accepted' || s.status === 'Accepted')) {
       return <span className="badge badge-easy"><CheckCircle size={12} /> Solved</span>;
     }
@@ -56,9 +70,10 @@ export const ProblemList = ({ onSelectProblem, setCurrentTab }) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return (
-      q.title.toLowerCase().includes(term) ||
-      (q.tags || []).some(t => t.toLowerCase().includes(term)) ||
-      q.category.toLowerCase().includes(term)
+      (q.title || '').toLowerCase().includes(term) ||
+      (q.slug || '').toLowerCase().includes(term) ||
+      (Array.isArray(q.tags) ? q.tags.some(t => String(t).toLowerCase().includes(term)) : String(q.tags || '').toLowerCase().includes(term)) ||
+      (q.category || '').toLowerCase().includes(term)
     );
   });
 
